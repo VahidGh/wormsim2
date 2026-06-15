@@ -45,6 +45,16 @@
 
 ---
 
+## `.github/workflows/`
+
+| File | Description | Update triggers |
+|---|---|---|
+| `.github/workflows/ci-baseline.yml` | CI: cmake build, CTest (all labels), cppcheck, clang-tidy, coverage, artifact upload | New test added; new source file added to build; new tool in the check chain; OpenCL/CUDA block enabled |
+| `.github/workflows/auto-release.yml` | Auto-creates GitHub Release on `v*` tag push; extracts CHANGELOG section | Repo URL changes; release body template changes; softprops version bump |
+| `.github/workflows/backfill-releases.yml` | Manual one-shot workflow to backfill GitHub Releases for all existing `v*` tags | Release body template changes |
+
+---
+
 ## `src/cpp/`
 
 | File | Description | Update triggers |
@@ -72,6 +82,13 @@
 | `NeuroMLLoader.cpp` | XML scanner helpers + population/biophysics/projection parsers | New NeuroML2 element type supported; new attribute parsed; parser refactor |
 | `NetworkInputParser.cpp` | `detectFormat` + `load` dispatcher | New format; new extension; perturbation spec logic change |
 | `PerturbationConfig.cpp` | `applyLine` dispatch + `apply` file reader | New key namespace supported; new subkey |
+
+### `src/cpp/tests/static/`
+
+| File | Description | Update triggers |
+|---|---|---|
+| `cpp_quality_checker.py` | 66-check Python static analyser (12 categories: TC/FP/NS/FN/RA/CL/TM/SL/LB/PS/OL/DS); runs as CTest `cpp_quality`; exit 1 on first regression | New C++ module added (add checks); check removed/relaxed; new category needed |
+| `CMakeLists.txt` | Wires `cpp_quality_checker.py` into CTest via `find_package(Python3)` | Checker renamed; timeout change; new static test added |
 
 ### `src/cpp/tests/io/`
 

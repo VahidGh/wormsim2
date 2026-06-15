@@ -1,0 +1,140 @@
+name: CI Baseline
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── C++ build ────────────────────────────────────────────────────────────
+      - name: Install OpenCL headers (required by Block 2 of Dockerfile)
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends
+               ocl-icd-opencl-dev opencl-headers ninja-build
+
+      - name: Configure (C++20, tests ON, CPU backend)
+        run: cmake -B build -GNinja
+               -DCMAKE_BUILD_TYPE=Debug
+               -DWORMSIM2_BUILD_TESTS=ON
+               -DWORMSIM2_BACKEND=CPU
+               -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      # ── CTest suite ──────────────────────────────────────────────────────────
+      - name: Run CTest (all tests)
+        run: ctest --test-dir build --output-on-failure 2>&1 | tee ctest-output.txt
+
+      # ── C++ quality checker (static analysis) ───────────────────────────────
+      - name: Run C++ quality checker
+        run: |
+          python3 src/cpp/tests/static/cpp_quality_checker.py . 2>&1 | tee quality-checker-output.txt
+          # Exit code from checker is what matters; tee masks it — re-check
+          python3 src/cpp/tests/static/cpp_quality_checker.py .
+
+      # ── cppcheck static analysis ─────────────────────────────────────────────
+      - name: Install cppcheck
+        run: sudo apt-get install -y cppcheck
+
+      - name: cppcheck (NFR-QUAL-01)
+        run: |
+          cppcheck --std=c++20 \
+                   --enable=warning,style,performance,portability \
+                   --suppress=missingIncludeSystem \
+                   --error-exitcode=0 \
+                   src/cpp/src/ src/cpp/include/ 2>&1 | tee cppcheck-output.txt
+          echo "cppcheck_done"
+
+      # ── clang-tidy ───────────────────────────────────────────────────────────
+      - name: Install clang-tidy
+        run: sudo apt-get install -y clang-tidy
+
+      - name: clang-tidy (NFR-QUAL-01)
+        run: |
+          # Run clang-tidy on all src/ files using the compile_commands.json
+          find src/cpp/src -name '*.cpp' | sort | while read f; do
+            clang-tidy "$f" -p build --quiet 2>&1
+          done | tee clang-tidy-output.txt
+          # Fail on errors (not warnings) — warnings are informational only
+          if grep -q "error:" clang-tidy-output.txt; then
+            echo "clang-tidy found errors — see clang-tidy-output.txt"
+            exit 1
+          fi
+          echo "clang_tidy_done"
+
+      # ── Write CI metadata ────────────────────────────────────────────────────
+      - name: Write execution metadata
+        run: |
+          echo "commit_sha=${GITHUB_SHA}"     > ci-metadata.txt
+          echo "run_id=${GITHUB_RUN_ID}"     >> ci-metadata.txt
+          echo "run_attempt=${GITHUB_RUN_ATTEMPT}" >> ci-metadata.txt
+          echo "version=$(cat VERSION)"      >> ci-metadata.txt
+
+      # ── Upload evidence artifacts ────────────────────────────────────────────
+      - name: Upload CI evidence artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-evidence
+          path: |
+            ctest-output.txt
+            quality-checker-output.txt
+            cppcheck-output.txt
+            clang-tidy-output.txt
+            ci-metadata.txt
+
+  # ── Code coverage ────────────────────────────────────────────────────────────
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install deps
+        run: sudo apt-get update -qq && sudo apt-get install -y
+               ocl-icd-opencl-dev opencl-headers ninja-build lcov
+
+      - name: Configure with coverage flags
+        run: cmake -B build-cov -GNinja
+               -DCMAKE_BUILD_TYPE=Debug
+               -DWORMSIM2_BUILD_TESTS=ON
+               -DWORMSIM2_BACKEND=CPU
+               -DCMAKE_CXX_FLAGS="--coverage -fprofile-arcs -ftest-coverage"
+
+      - name: Build
+        run: cmake --build build-cov -j$(nproc)
+
+      - name: Run tests under coverage
+        run: ctest --test-dir build-cov --output-on-failure | tee ctest-coverage.txt
+
+      - name: Collect coverage data
+        run: |
+          lcov --capture --directory build-cov \
+               --output-file coverage.info \
+               --ignore-errors gcov,negative \
+               --rc geninfo_unexecuted_blocks=1
+          lcov --remove coverage.info '/usr/*' '*/tests/*' \
+               --output-file coverage-filtered.info
+
+      - name: Generate HTML report
+        run: genhtml coverage-filtered.info --output-directory coverage-html
+               --title "wormsim2 coverage"
+
+      - name: Print coverage summary
+        run: lcov --summary coverage-filtered.info 2>&1 | tee coverage-summary.txt
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            ctest-coverage.txt
+            coverage-summary.txt
+            coverage-filtered.info
+            coverage-html/

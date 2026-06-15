@@ -1,10 +1,11 @@
 # wormsim2
 
-[![Version](https://img.shields.io/badge/version-v0.2.0-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.3.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-C%2B%2B20-blue?style=flat-square)](src/cpp/)
 [![Backends](https://img.shields.io/badge/backends-CPU%20%7C%20CUDA%20%7C%20OpenCL-76b900?style=flat-square)](docs/research/00-motivation-objectives-related-work.md)
-[![Status](https://img.shields.io/badge/status-io%20module%20complete-yellow?style=flat-square)](docs/ISSUES.md)
+[![Status](https://img.shields.io/badge/status-CI%20live-brightgreen?style=flat-square)](docs/ISSUES.md)
+[![CI](https://github.com/VahidGh/wormsim2/actions/workflows/ci-baseline.yml/badge.svg)](https://github.com/VahidGh/wormsim2/actions/workflows/ci-baseline.yml)
 
 > **A real-time, biophysically-faithful *C. elegans* locomotion simulator.**
 
@@ -107,6 +108,8 @@ Track progress in [docs/ISSUES.md](docs/ISSUES.md) and [CHANGELOG.md](CHANGELOG.
 | [Architecture design](docs/design/02-architecture-design.md) | Draft |
 | [C++20 guidelines](docs/cpp-guidelines.md) | Done |
 | `src/cpp/io/` — dual-format network loader | **Done** (2/2 tests pass) |
+| CI pipeline (build/test/cppcheck/clang-tidy/coverage) | **Done** |
+| C++20 quality checker (66 static checks, 12 categories) | **Done** |
 | Neural integrator (`NeuralIntegrator`) | Planned |
 | FEM body (`FEMBody`) | Planned |
 | Compute backends (OpenCL / CUDA) | Planned |

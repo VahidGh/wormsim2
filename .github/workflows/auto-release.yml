@@ -1,0 +1,87 @@
+name: Auto-Release on Tag
+
+# Creates a GitHub Release every time a v* tag is pushed.
+# Extracts the matching CHANGELOG.md section for the release body.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag to release (e.g. v0.3.0) — for manual re-run'
+        required: true
+        default: 'v0.2.0'
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Resolve tag ───────────────────────────────────────────────────────────
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag_name }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      # ── Extract CHANGELOG section ─────────────────────────────────────────────
+      - name: Extract release notes from CHANGELOG
+        run: |
+          python3 - "${{ steps.tag.outputs.version }}" << 'PY'
+          import re, sys
+
+          version = sys.argv[1]
+          changelog = open("CHANGELOG.md", encoding="utf-8").read()
+
+          pattern = rf'(##\s+\[{re.escape(version)}\].*?)(?=\n##\s+\[|\Z)'
+          m = re.search(pattern, changelog, re.DOTALL)
+
+          if m:
+              body = m.group(1).strip()
+          else:
+              body = (f"No CHANGELOG entry found for v{version}.\n\n"
+                      "See CHANGELOG.md for full history.")
+
+          with open("release_notes.md", "w", encoding="utf-8") as f:
+              f.write(body)
+          print(f"Extracted {len(body)} chars for v{version}")
+          PY
+
+      # ── Append standard links ─────────────────────────────────────────────────
+      - name: Append links to release notes
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          REPO="${{ github.repository }}"
+          cat >> release_notes.md << EOF
+
+          ---
+          **Repository**
+          - 📋 CHANGELOG: [CHANGELOG.md](https://github.com/${REPO}/blob/${TAG}/CHANGELOG.md)
+          - 📄 File registry: [docs/file-registry.md](https://github.com/${REPO}/blob/${TAG}/docs/file-registry.md)
+          - 🐛 Issues tracker: [docs/ISSUES.md](https://github.com/${REPO}/blob/${TAG}/docs/ISSUES.md)
+          EOF
+
+      # ── Create GitHub Release ─────────────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "wormsim2 ${{ steps.tag.outputs.tag }}"
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(steps.tag.outputs.tag, '-') }}
+          make_latest: true

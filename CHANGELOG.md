@@ -12,7 +12,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.2.0] - 2026-06-15 *(current)*
+## [0.3.0] - 2026-06-15 *(current)*
+
+### Added
+
+- **GitHub Actions CI** (`.github/workflows/`):
+  - `ci-baseline.yml` — on every push/PR: cmake build (C++20, Ninja, CPU backend),
+    CTest (all tests including `cpp_quality`), cppcheck NFR-QUAL-01, clang-tidy,
+    code coverage (lcov/gcov), upload of all evidence artifacts.
+  - `auto-release.yml` — fires on `v*` tag push; extracts matching CHANGELOG section
+    and creates a GitHub Release automatically (+ manual `workflow_dispatch` override).
+  - `backfill-releases.yml` — one-shot manual workflow to create GitHub Releases for
+    all existing `v*` tags that have no release yet; dry-run mode supported.
+- **C++ quality checker** (`src/cpp/tests/static/cpp_quality_checker.py`) — 66-check
+  Python static analyser verifying C++20 idioms and best practices across the source
+  tree; runs as CTest target `cpp_quality`; exit-1 on first regression.
+  Check categories: TC (toolchain: cmake/pragma/flags), FP (float safety: bio params,
+  NaN guard), NS (namespaces: wormsim2 ns, no using-std in headers, string_view),
+  FN (functions: nodiscard/maybe_unused/lambdas/IIFE/SRP/defaults), RA (RAII: no bare
+  new/delete, ifstream, optional), CL (classes: Rule of Zero, const noexcept,
+  static-method classes, enum class), TM (templates: unordered_map, vector<T> diversity,
+  sregex_iterator), SL (stdlib: transform/directory_iterator/starts_with/
+  istreambuf_iterator), LB (libraries: static lib/PUBLIC/PRIVATE CMake), PS (parallel
+  safety: no mutable/global state, immutable config), OL (object layout: no virtual in
+  data structs, flat integer IDs), DS (data safety: const params, no shared state).
+- `src/cpp/tests/static/CMakeLists.txt` — wires the Python checker into CTest with
+  `find_package(Python3)` and a 30 s timeout; label `static`.
+- Updated `src/cpp/tests/CMakeLists.txt` — added `add_subdirectory(static)`.
+
+---
+
+## [0.2.0] - 2026-06-15
 
 ### Added
 

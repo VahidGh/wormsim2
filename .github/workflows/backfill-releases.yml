@@ -1,0 +1,162 @@
+name: Backfill GitHub Releases
+
+# One-shot manual workflow — creates GitHub Releases for every v* tag
+# that does not yet have one. Each release body is extracted from the
+# matching ## [X.Y.Z] section in CHANGELOG.md.
+#
+# Usage:
+#   GitHub → Actions → "Backfill GitHub Releases" → Run workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run — print what would be created without creating releases'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+      tags:
+        description: 'Comma-separated tags to process (empty = all v* tags)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Backfill releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          TAGS_INPUT: ${{ github.event.inputs.tags }}
+        run: |
+          python3 - << 'PY'
+          import os, re, subprocess, json, urllib.request, urllib.error
+
+          REPO    = os.environ["GITHUB_REPOSITORY"]
+          TOKEN   = os.environ["GH_TOKEN"]
+          DRY_RUN = os.environ.get("DRY_RUN", "false").lower() == "true"
+          TAGS_INPUT = os.environ.get("TAGS_INPUT", "").strip()
+
+          def api(method, path, data=None):
+              url  = f"https://api.github.com{path}"
+              body = json.dumps(data).encode() if data else None
+              req  = urllib.request.Request(url, data=body, method=method)
+              req.add_header("Authorization", f"Bearer {TOKEN}")
+              req.add_header("Accept", "application/vnd.github+json")
+              req.add_header("X-GitHub-Api-Version", "2022-11-28")
+              if body:
+                  req.add_header("Content-Type", "application/json")
+              try:
+                  with urllib.request.urlopen(req) as r:
+                      return json.loads(r.read())
+              except urllib.error.HTTPError as e:
+                  if e.code == 404:
+                      return None
+                  raise RuntimeError(f"API {method} {url} → HTTP {e.code}: {e.read().decode()}")
+
+          # Fetch existing releases
+          existing = {}
+          page = 1
+          while True:
+              batch = api("GET", f"/repos/{REPO}/releases?per_page=100&page={page}")
+              if not batch:
+                  break
+              for r in batch:
+                  existing[r["tag_name"]] = r["id"]
+              if len(batch) < 100:
+                  break
+              page += 1
+          print(f"Existing releases: {sorted(existing.keys())}")
+
+          # Determine tags to process
+          if TAGS_INPUT:
+              all_tags = [t.strip() for t in TAGS_INPUT.split(",") if t.strip()]
+          else:
+              result = subprocess.run(
+                  ["git", "tag", "-l", "v*", "--sort=version:refname"],
+                  capture_output=True, text=True)
+              all_tags = [t for t in result.stdout.strip().split("\n") if t]
+          print(f"Tags to process: {all_tags}")
+
+          changelog = open("CHANGELOG.md", encoding="utf-8").read()
+
+          def extract_notes(version):
+              pattern = rf'(##\s+\[{re.escape(version)}\].*?)(?=\n##\s+\[|\Z)'
+              m = re.search(pattern, changelog, re.DOTALL)
+              if m:
+                  return m.group(1).strip()
+              return (f"Release {version}\n\n"
+                      f"See [CHANGELOG.md](https://github.com/{REPO}/blob/v{version}/CHANGELOG.md).")
+
+          def release_body(tag, version):
+              notes = extract_notes(version)
+              return notes + f"""
+
+          ---
+          **Repository**
+          - 📋 CHANGELOG: [CHANGELOG.md](https://github.com/{REPO}/blob/{tag}/CHANGELOG.md)
+          - 📄 File registry: [docs/file-registry.md](https://github.com/{REPO}/blob/{tag}/docs/file-registry.md)
+          - 🐛 Issues tracker: [docs/ISSUES.md](https://github.com/{REPO}/blob/{tag}/docs/ISSUES.md)"""
+
+          def semver_key(tag):
+              v = tag.lstrip("v")
+              parts = re.split(r'[.\-]', v)
+              nums = []
+              for p in parts[:3]:
+                  try: nums.append(int(p))
+                  except: nums.append(0)
+              while len(nums) < 3:
+                  nums.append(0)
+              return tuple(nums)
+
+          latest_tag = max(all_tags, key=semver_key) if all_tags else ""
+          created, skipped, updated = [], [], []
+
+          for tag in all_tags:
+              version = tag.lstrip("v")
+              body    = release_body(tag, version)
+              is_latest    = (tag == latest_tag)
+              is_prerelease = "-" in version
+
+              if tag in existing:
+                  rel = api("GET", f"/repos/{REPO}/releases/{existing[tag]}")
+                  if rel and (not rel["body"] or "Compare" in (rel.get("body") or "")):
+                      print(f"  UPDATE {tag} (overwriting empty/auto-generated body)")
+                      if not DRY_RUN:
+                          api("PATCH", f"/repos/{REPO}/releases/{existing[tag]}", {
+                              "body": body,
+                              "make_latest": "true" if is_latest else "false",
+                          })
+                      updated.append(tag)
+                  else:
+                      print(f"  SKIP {tag} (release already has body)")
+                      skipped.append(tag)
+              else:
+                  print(f"  CREATE {tag}{' [DRY RUN]' if DRY_RUN else ''}")
+                  if not DRY_RUN:
+                      api("POST", f"/repos/{REPO}/releases", {
+                          "tag_name": tag,
+                          "name": f"wormsim2 {tag}",
+                          "body": body,
+                          "draft": False,
+                          "prerelease": is_prerelease,
+                          "make_latest": "true" if is_latest else "legacy",
+                      })
+                  created.append(tag)
+
+          print(f"\n{'[DRY RUN] ' if DRY_RUN else ''}Summary:")
+          print(f"  Created:  {created}")
+          print(f"  Updated:  {updated}")
+          print(f"  Skipped:  {skipped}")
+          print(f"  Latest:   {latest_tag}")
+          PY
