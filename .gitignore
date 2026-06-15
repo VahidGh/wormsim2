@@ -1,0 +1,55 @@
+# ── IDE / OS artifacts ────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── C++ / CUDA build artifacts ────────────────────────────────────────────────
+build/
+src/cpp/build/
+*.o
+*.a
+*.so
+*.out
+# CUDA
+*.cubin
+*.ptx
+*.fatbin
+
+# ── Container images (large binaries) ─────────────────────────────────────────
+*.sif
+*.sqf
+
+# ── Python cache artifacts ────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.env/
+.pytest_cache/
+.mypy_cache/
+
+# ── Notebook checkpoints ──────────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── Generated outputs / large data (keep small samples only) ──────────────────
+results/
+data/raw/
+*.npz
+*.vtu
+*.pvtu
+*.pvd
+
+# ── HPC / SLURM runtime output ────────────────────────────────────────────────
+slurm-*.out
+slurm-*.err
+
+# ── Dev container / toolchain overrides (local only) ──────────────────────────
+.dev/
+.devcontainer/
+
