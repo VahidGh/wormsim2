@@ -38,7 +38,7 @@
 |---|---|---|
 | `docs/file-registry.md` | **This file** — inventory of all tracked files and their update triggers | New file added or removed anywhere in the project |
 | `docs/ISSUES.md` | ISSUE-NNN tracker for bugs, improvements, decisions, research questions | New issue opened; issue resolved/closed; issue scope changed |
-| `docs/cpp-guidelines.md` | 11-section C++20 best-practice checklist (NFR-QUAL-01) | C++ standard bump; new idiom adopted project-wide; new static-analysis rule; new section needed |
+| ~~`docs/cpp-guidelines.md`~~ | **[removed v0.4.0]** — superseded by `src/cpp/tests/static/cpp_quality_checker.py` | — |
 | `docs/research/00-motivation-objectives-related-work.md` | Scientific charter — motivation, related work, gap analysis, 4-layer architecture, validation strategy, G/E/DA/N objectives | New competitor added; architecture layer added/changed; objective added/changed; GPU estimate updated |
 | `docs/requirements/01-requirements-analysis.md` | Requirements analysis — stakeholders, world-machine, DA, FR, NFR, UC, traceability | New functional/non-functional requirement; new use case; new stakeholder; traceability matrix row added |
 | `docs/design/02-architecture-design.md` | Architecture design — C&C/Module/Deployment views, component interfaces, VR gates, design principles | New component; interface changed; VR gate added; design principle updated; deployment target added |
@@ -62,6 +62,32 @@
 | `src/cpp/CMakeLists.txt` | Library and test target definitions for the C++ core | New source file added to `wormsim2_io` or other library; new library target; new include directory |
 | `src/cpp/tests/CMakeLists.txt` | Top-level test subdirectory enabler | New test subdirectory added |
 | `src/cpp/tests/io/CMakeLists.txt` | CTest targets for io/ tests | New test executable in `tests/io/`; link dependency change |
+
+### `src/cpp/include/neural/`
+
+| File | Description | Update triggers |
+|---|---|---|
+| `ChannelKinetics.h` | `GateKinetics` / `ChannelSpec` structs; pure `x_inf`, `tau_x`, `rush_larsen` functions; `channel_spec()` catalog lookup | New gate kinetics form; new pure function; catalog interface change |
+| `NeuralState.h` | SoA state (`v[]`, `gate[]`, `s_syn[]`) + `allocate()` factory | New state field (new ion species, synaptic model change); stride layout change |
+| `NeuralIntegrator.h` | `NeuralIntegrator` class: `step()`, `voltages()`, `state()`, `reset()` | New public method; interface change; new numerical scheme; unit change |
+
+### `src/cpp/src/neural/`
+
+| File | Description | Update triggers |
+|---|---|---|
+| `ChannelKinetics.cpp` | Built-in c302 channel catalog (NCA/KD/KA/KQS/KVS/IR) | New c302 channel added; parameter re-fit from experimental data; new channel form |
+| `NeuralState.cpp` | `NeuralState::allocate` implementation | State layout change |
+| `NeuralIntegrator.cpp` | `build_layout`, `update_gates`, `update_synapses`, `update_voltages`, `gate_product` | Numerical scheme change; new current type; gap-junction algorithm change |
+
+### `src/cpp/tests/neural/`
+
+| File | Description | Update triggers |
+|---|---|---|
+| `test_hh_single.cpp` | CTest suite: leak at reversal, exponential decay vs analytic, KD gate direction, I_ext depolarisation | New `NeuralIntegrator` feature; regression; new channel added to catalog |
+| `test_gap_junction.cpp` | CTest suite: mean-voltage conservation, V_diff exponential decay vs analytic, long-run convergence | New gap-junction implementation; coupling scheme change |
+| `CMakeLists.txt` | CTest targets for neural/ tests (label: `neural`) | New test executable; link dependency change |
+
+---
 
 ### `src/cpp/include/io/`
 

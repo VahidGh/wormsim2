@@ -1,6 +1,6 @@
 # wormsim2
 
-[![Version](https://img.shields.io/badge/version-v0.3.0-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.4.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-C%2B%2B20-blue?style=flat-square)](src/cpp/)
 [![Backends](https://img.shields.io/badge/backends-CPU%20%7C%20CUDA%20%7C%20OpenCL-76b900?style=flat-square)](docs/research/00-motivation-objectives-related-work.md)
@@ -23,6 +23,8 @@ of these at once, and ships a **web-friendly browser 3D viewer** so results are
 explorable without a native install.
 
 > 📄 **Scientific foundation:** [docs/research/00-motivation-objectives-related-work.md](docs/research/00-motivation-objectives-related-work.md)
+> 📋 **Requirements:** [docs/requirements/01-requirements-analysis.md](docs/requirements/01-requirements-analysis.md)
+> 🏗️ **Architecture:** [docs/design/02-architecture-design.md](docs/design/02-architecture-design.md)
 
 ---
 
@@ -82,7 +84,6 @@ wormsim2/
 │   ├── research/00-motivation-objectives-related-work.md  ← scientific charter
 │   ├── requirements/01-requirements-analysis.md           ← requirements analysis
 │   ├── design/02-architecture-design.md                   ← architecture design
-│   ├── cpp-guidelines.md                                  ← C++20 best-practice checklist (NFR-QUAL-01)
 │   ├── file-registry.md                                   ← per-file update trigger registry
 │   └── ISSUES.md                                          ← issues & improvements tracker
 ├── src/
@@ -101,26 +102,26 @@ wormsim2/
 
 Track progress in [docs/ISSUES.md](docs/ISSUES.md) and [CHANGELOG.md](CHANGELOG.md).
 
-| Component | Status |
-|---|---|
-| [Scientific charter](docs/research/00-motivation-objectives-related-work.md) | Draft |
-| [Requirements analysis](docs/requirements/01-requirements-analysis.md) | Draft |
-| [Architecture design](docs/design/02-architecture-design.md) | Draft |
-| [C++20 guidelines](docs/cpp-guidelines.md) | Done |
-| `src/cpp/io/` — dual-format network loader | **Done** (2/2 tests pass) |
-| CI pipeline (build/test/cppcheck/clang-tidy/coverage) | **Done** |
-| C++20 quality checker (66 static checks, 12 categories) | **Done** |
-| Neural integrator (`NeuralIntegrator`) | Planned |
-| FEM body (`FEMBody`) | Planned |
-| Compute backends (OpenCL / CUDA) | Planned |
-| Python validation layer | Planned |
-| Browser 3D viewer | Planned |
+| Component                                                                 | Status                          |
+| ------------------------------------------------------------------------- | ------------------------------- |
+| [Scientific charter](docs/research/00-motivation-objectives-related-work.md) | Draft                           |
+| [Requirements analysis](docs/requirements/01-requirements-analysis.md)       | Draft                           |
+| [Architecture design](docs/design/02-architecture-design.md)                 | Draft                           |
+| `src/cpp/io/` — dual-format network loader                             | **Done** (2/2 tests pass) |
+| CI pipeline (build/test/cppcheck/clang-tidy/coverage)                     | **Done**                  |
+| C++20 quality checker (66 static checks, 12 categories)                   | **Done**                  |
+| `src/cpp/neural/` — HH ODE integrator                                  | **Done** (2/2 tests pass) |
+| FEM body (`FEMBody`)                                                    | Planned                         |
+| FEM body (`FEMBody`)                                                    | Planned                         |
+| Compute backends (OpenCL / CUDA)                                          | Planned                         |
+| Python validation layer                                                   | Planned                         |
+| Browser 3D viewer                                                         | Planned                         |
 
 ---
 
 ## License
 
-[MIT](LICENSE) © 2026 Seyed Vahid Ghayoomie.
+[MIT](LICENSE) © 2026 Seyed Vahid Ghayoomie — <seyedvahid.ghayoomie@mail.polimi.it>
 
 ## AI attribution
 
@@ -131,5 +132,4 @@ engineer under the author's scientific direction.
 
 Builds on the open *C. elegans* modelling ecosystem — the connectome and c302 nervous
 system, the Sibernetic body simulator, MetaWorm/BAAIWorm, and the WCON / worm-movement
-community tooling. See the [research charter](docs/research/00-motivation-objectives-related-work.md)
-for full citations.
+community tooling. See the [research charter](docs/research/00-motivation-objectives-related-work.md) for full citations.

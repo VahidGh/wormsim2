@@ -12,7 +12,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.3.0] - 2026-06-15 *(current)*
+## [0.4.0] - 2026-06-15 *(current)*
+
+### Added
+
+- **`neural/` HH ODE integrator** (`src/cpp/neural/`) — FR-SIM-01:
+  - `ChannelKinetics.h/.cpp` — built-in c302 channel catalog (NCA, KD, KA, KQS, KVS, IR)
+    with Boltzmann steady-state (`x_inf`) and Gaussian tau parameterisation; pure-function
+    `rush_larsen()` for exact exponential gate update at constant V over dt.
+  - `NeuralState.h/.cpp` — SoA state arrays (`v[]`, `gate[n×stride]`, `s_syn[]`);
+    GPU-friendly layout (neuron-major; CUDA backend will transpose to gate-major).
+  - `NeuralIntegrator.h/.cpp` — single-compartment HH over the full connectome:
+    Rush–Larsen gate update; graded chemical synapse gating (Rush–Larsen on `s_inf(V_pre)`
+    via sigmoid threshold); conductance-method voltage update (implicit diagonal, explicit
+    gap-junction cross-terms); voltage clamped to [−150, 80] mV.
+  - `wormsim2_neural` static library; links `PUBLIC wormsim2_io` (inherits `NetworkConfig`).
+- **Neural test suite** (`src/cpp/tests/neural/`):
+  - `test_hh_single` — 4 assertions: leak at reversal (V invariant), exponential decay
+    vs analytic (conductance method exact for pure leak), KD gate direction, I_ext depolarisation.
+  - `test_gap_junction` — 3 assertions: mean-voltage conservation (analytic), voltage-difference
+    exponential decay vs analytic, convergence over 500 ms.
+  - Both pass (4/4 + 3/3 assertions); registered as CTest label `neural`.
+
+### Changed
+
+- **`README.md`** — added direct links to `docs/requirements/01-requirements-analysis.md` and
+  `docs/design/02-architecture-design.md` under the scientific charter line; added author contact
+  email (`seyedvahid.ghayoomie@mail.polimi.it`) to the License section.
+
+### Removed
+
+- **`docs/cpp-guidelines.md`** — superseded by `src/cpp/tests/static/cpp_quality_checker.py`
+  (66 automated checks, CI-enforced) and the internal lecture-mapping review cycle. NFR-QUAL-01
+  now points to the checker.
+
+---
+
+## [0.3.0] - 2026-06-15
 
 ### Added
 

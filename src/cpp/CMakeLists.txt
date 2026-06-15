@@ -16,6 +16,18 @@ target_include_directories(wormsim2_io PUBLIC include)
 target_compile_features(wormsim2_io PUBLIC cxx_std_20)
 
 # ---------------------------------------------------------------------------
+# neural — HH ODE integrator (Rush–Larsen gates, conductance method voltages)
+# ---------------------------------------------------------------------------
+add_library(wormsim2_neural STATIC
+    src/neural/ChannelKinetics.cpp
+    src/neural/NeuralState.cpp
+    src/neural/NeuralIntegrator.cpp
+)
+target_include_directories(wormsim2_neural PUBLIC include)
+target_link_libraries(wormsim2_neural PUBLIC wormsim2_io)
+target_compile_features(wormsim2_neural PUBLIC cxx_std_20)
+
+# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 if(WORMSIM2_BUILD_TESTS)
