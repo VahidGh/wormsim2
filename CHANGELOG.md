@@ -36,9 +36,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`README.md`** — added direct links to `docs/requirements/01-requirements-analysis.md` and
-  `docs/design/02-architecture-design.md` under the scientific charter line; added author contact
-  email (`seyedvahid.ghayoomie@mail.polimi.it`) to the License section.
+- **`README.md`** — added direct links to `docs/requirements/01-requirements-analysis.md`,
+  `docs/design/02-architecture-design.md`, and `notebooks/project_tour.ipynb` under the
+  scientific charter line; added author contact email (`seyedvahid.ghayoomie@mail.polimi.it`)
+  to the License section; added `notebooks/` to repo layout.
+- **`notebooks/project_tour.ipynb`** *(new)* — version-by-version project tour notebook with
+  one section per MINOR/MAJOR release (v0.1.0–v0.4.0); each section describes what was added
+  and provides a runnable Python input→output example. The v0.4.0 section includes a full
+  Python reference implementation of the channel kinetics + conductance-method integrator
+  (mirrors `ChannelKinetics.h/cpp` and `NeuralIntegrator.cpp` exactly) with four runnable
+  examples: NCA leak decay (analytic match), KD gate activation, gap-junction coupling
+  (V_avg conservation + exponential V_diff decay), and multi-channel neuron with current pulse.
 
 ### Removed
 

@@ -25,6 +25,7 @@ explorable without a native install.
 > 📄 **Scientific foundation:** [docs/research/00-motivation-objectives-related-work.md](docs/research/00-motivation-objectives-related-work.md)
 > 📋 **Requirements:** [docs/requirements/01-requirements-analysis.md](docs/requirements/01-requirements-analysis.md)
 > 🏗️ **Architecture:** [docs/design/02-architecture-design.md](docs/design/02-architecture-design.md)
+> 🗒️ **Project tour (notebook):** [notebooks/project_tour.ipynb](notebooks/project_tour.ipynb)
 
 ---
 
@@ -80,6 +81,8 @@ wormsim2/
 ├── .clang-tidy  .dockerignore  .gitignore
 ├── docker/
 │   └── Dockerfile.wormsim2-dev                            ← block-structured dev image (Ubuntu 22.04)
+├── notebooks/
+│   └── project_tour.ipynb                                 ← version-by-version tour (input→output examples)
 ├── docs/
 │   ├── research/00-motivation-objectives-related-work.md  ← scientific charter
 │   ├── requirements/01-requirements-analysis.md           ← requirements analysis

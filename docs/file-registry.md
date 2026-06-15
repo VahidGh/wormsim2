@@ -24,6 +24,14 @@
 
 ---
 
+## `notebooks/`
+
+| File | Description | Update triggers |
+|---|---|---|
+| `notebooks/project_tour.ipynb` | Version-by-version project tour: one section per MINOR/MAJOR release with runnable input→output examples (Python reference implementation of C++ core) | New MINOR or MAJOR version released; new example cell needed; channel catalog parameter changed |
+
+---
+
 ## `docker/`
 
 | File | Description | Update triggers |
