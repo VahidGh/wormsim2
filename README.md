@@ -1,10 +1,10 @@
 # wormsim2
 
-[![Version](https://img.shields.io/badge/version-v0.1.0--dev-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.2.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![Language](https://img.shields.io/badge/language-C%2B%2B17-blue?style=flat-square)](src/cpp/)
+[![Language](https://img.shields.io/badge/language-C%2B%2B20-blue?style=flat-square)](src/cpp/)
 [![Backends](https://img.shields.io/badge/backends-CPU%20%7C%20CUDA%20%7C%20OpenCL-76b900?style=flat-square)](docs/research/00-motivation-objectives-related-work.md)
-[![Status](https://img.shields.io/badge/status-requirements%20%26%20design-orange?style=flat-square)](docs/ISSUES.md)
+[![Status](https://img.shields.io/badge/status-io%20module%20complete-yellow?style=flat-square)](docs/ISSUES.md)
 
 > **A real-time, biophysically-faithful *C. elegans* locomotion simulator.**
 
@@ -73,14 +73,24 @@ optional **OpenCL** backend — all behind a single internal kernel interface.
 ```
 wormsim2/
 ├── README.md  CHANGELOG.md  VERSION  LICENSE
+├── CMakeLists.txt                                          ← root build (C++20, warnings, backend option)
+├── .clang-tidy  .dockerignore  .gitignore
+├── docker/
+│   └── Dockerfile.wormsim2-dev                            ← block-structured dev image (Ubuntu 22.04)
 ├── docs/
-│   ├── research/00-motivation-objectives-related-work.md   ← scientific charter
-│   ├── requirements/01-requirements-analysis.md            ← requirements analysis
-│   ├── design/02-architecture-design.md                    ← architecture design
-│   └── ISSUES.md                                           ← issues & improvements tracker
+│   ├── research/00-motivation-objectives-related-work.md  ← scientific charter
+│   ├── requirements/01-requirements-analysis.md           ← requirements analysis
+│   ├── design/02-architecture-design.md                   ← architecture design
+│   ├── cpp-guidelines.md                                  ← C++20 best-practice checklist (NFR-QUAL-01)
+│   ├── file-registry.md                                   ← per-file update trigger registry
+│   └── ISSUES.md                                          ← issues & improvements tracker
 ├── src/
-│   ├── cpp/{src,include,tests}/                            ← C++17 / CUDA core (planned)
-│   └── python/notebooks/                                   ← validation & analysis (planned)
+│   ├── cpp/
+│   │   ├── CMakeLists.txt
+│   │   ├── include/io/                                    ← NetworkConfig, loaders, parser headers
+│   │   ├── src/io/                                        ← NEURONLoader, NeuroMLLoader, etc.
+│   │   └── tests/io/                                      ← CTest suites (2/2 pass)
+│   └── python/notebooks/                                  ← validation & analysis (planned)
 └── config/                                                 ← run configuration (planned)
 ```
 
@@ -88,16 +98,18 @@ wormsim2/
 
 ## Status
 
-**Requirements & design** phase complete — scientific charter, requirements analysis,
-and architecture design are in place; C++ implementation next.
 Track progress in [docs/ISSUES.md](docs/ISSUES.md) and [CHANGELOG.md](CHANGELOG.md).
 
-| Document | Status |
+| Component | Status |
 |---|---|
 | [Scientific charter](docs/research/00-motivation-objectives-related-work.md) | Draft |
 | [Requirements analysis](docs/requirements/01-requirements-analysis.md) | Draft |
 | [Architecture design](docs/design/02-architecture-design.md) | Draft |
-| C++ core (`src/cpp/`) | Planned |
+| [C++20 guidelines](docs/cpp-guidelines.md) | Done |
+| `src/cpp/io/` — dual-format network loader | **Done** (2/2 tests pass) |
+| Neural integrator (`NeuralIntegrator`) | Planned |
+| FEM body (`FEMBody`) | Planned |
+| Compute backends (OpenCL / CUDA) | Planned |
 | Python validation layer | Planned |
 | Browser 3D viewer | Planned |
 

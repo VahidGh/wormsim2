@@ -1,0 +1,106 @@
+# wormsim2 development image
+#
+# Minimal from-scratch build — only what each module actually needs.
+# Add a block when the corresponding module is first implemented; leave the
+# rest commented until then. Each block records the version that introduced it.
+#
+# Build:
+#   docker build -f docker/Dockerfile.wormsim2-dev -t wormsim2-dev .
+#
+# Run (interactive):
+#   docker run --rm -it -v "$(pwd)":/wormsim2 wormsim2-dev
+#
+# Run tests (CI-style):
+#   docker run --rm -v "$(pwd)":/wormsim2 wormsim2-dev bash -c \
+#     "cmake -B build -DCMAKE_BUILD_TYPE=Debug && cmake --build build -j$(nproc) && ctest --test-dir build --output-on-failure"
+#
+# OpenCL note: headers and the ICD loader are installed for compilation and
+# static analysis. Actual GPU execution inside Docker on macOS requires an
+# Intel/AMD OpenCL runtime exposed via --device (Linux host only). For GPU
+# execution on macOS, run the wormsim2 binary natively against the macOS
+# OpenCL framework (/System/Library/Frameworks/OpenCL.framework).
+
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+ENV WORMSIM2_SRC=/wormsim2
+
+# ── Block 1: C++ build core ───────────────────────────────────────────────
+# ADDED: v0.1.0-dev  (io/ module — NetworkConfig, NEURONLoader, NeuroMLLoader)
+# ubuntu 22.04 ships cmake 3.22.1 which satisfies our ≥ 3.22 requirement.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        ninja-build \
+        git \
+        pkg-config \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Block 2: OpenCL GPU dev ───────────────────────────────────────────────
+# ADDED: v0.1.0-dev  (mandatory GPU path — Intel Iris Plus 645 iGPU on dev machine)
+# ocl-icd-opencl-dev installs the ICD loader + libOpenCL.so for linking.
+# opencl-headers provides /usr/include/CL/cl.h (OpenCL 3.0 headers).
+# clinfo lets us inspect available platforms at runtime.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        opencl-headers \
+        ocl-icd-opencl-dev \
+        ocl-icd-libopencl1 \
+        clinfo \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Block 3: Static analysis — NFR-QUAL-01 ───────────────────────────────
+# ADDED: v0.1.0-dev  (cppcheck + clang-tidy required by cpp-guidelines.md)
+# ubuntu 22.04: clang-14, clang-tidy-14 (aliased as clang-tidy via alternatives)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        cppcheck \
+        clang-14 \
+        clang-tidy-14 \
+    && update-alternatives --install /usr/bin/clang-tidy clang-tidy \
+         /usr/bin/clang-tidy-14 100 \
+    && update-alternatives --install /usr/bin/clang clang \
+         /usr/bin/clang-14 100 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Block 4: Python / NeuroML toolchain ───────────────────────────────────
+# NEEDED WHEN: ISSUE-009 resolved — HOC → NeuroML2 conversion via jNeuroML/pyNeuroML
+# UNCOMMENT when the dual-format parser (NEURONLoader::loadHoc) is fully implemented.
+#
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#         python3 python3-pip python3-venv \
+#         libxml2-dev \
+#     && rm -rf /var/lib/apt/lists/*
+# RUN pip3 install --no-cache-dir pyneuroml libNeuroML
+
+# ── Block 5: deal.II FEM ─────────────────────────────────────────────────
+# NEEDED WHEN: ISSUE-002 resolved — body/FEM module implementation begins.
+# ubuntu 22.04 ships deal.II 9.3 (libdeal.ii-dev). For deal.II ≥ 9.5 build
+# from source using the dealii/dealii upstream image as reference.
+#
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#         libdeal.ii-dev \
+#     && rm -rf /var/lib/apt/lists/*
+
+# ── Block 6: CUDA ────────────────────────────────────────────────────────
+# NEEDED WHEN: deploying to NVIDIA cluster (no local NVIDIA GPU on dev machine).
+# Switch base image to nvidia/cuda:12.x-devel-ubuntu22.04 and uncomment.
+#
+# ARG CUDA_VERSION=12.4
+# RUN apt-get install -y cuda-toolkit-${CUDA_VERSION}
+
+# ── Block 7: MPI / multi-node ────────────────────────────────────────────
+# NEEDED WHEN: distributed simulation across cluster nodes.
+#
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#         libopenmpi-dev openmpi-bin \
+#     && rm -rf /var/lib/apt/lists/*
+
+WORKDIR ${WORMSIM2_SRC}
+
+# Default: run tests (CI). Override with `bash` for interactive dev.
+CMD ["bash", "-c", \
+     "cmake -B build -DCMAKE_BUILD_TYPE=Debug -DWORMSIM2_BUILD_TESTS=ON \
+      -DWORMSIM2_BACKEND=CPU -GNinja \
+      && cmake --build build -j$(nproc) \
+      && ctest --test-dir build --output-on-failure"]

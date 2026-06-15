@@ -1,0 +1,7 @@
+add_executable(test_nmodl_parser test_nmodl_parser.cpp)
+target_link_libraries(test_nmodl_parser PRIVATE wormsim2_io)
+add_test(NAME nmodl_parser COMMAND test_nmodl_parser)
+
+add_executable(test_perturbation test_perturbation.cpp)
+target_link_libraries(test_perturbation PRIVATE wormsim2_io)
+add_test(NAME perturbation COMMAND test_perturbation)

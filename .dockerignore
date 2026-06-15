@@ -1,0 +1,6 @@
+build/
+.dev/
+*.o
+*.a
+*.so
+.git/

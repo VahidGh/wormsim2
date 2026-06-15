@@ -1,0 +1,25 @@
+---
+Checks: >
+  clang-diagnostic-*,
+  clang-analyzer-*,
+  cppcoreguidelines-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  -modernize-use-trailing-return-type,
+  -readability-magic-numbers,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -readability-identifier-length
+
+WarningsAsErrors: ''
+
+HeaderFilterRegex: 'src/cpp/include/.*\.h$'
+
+CheckOptions:
+  - key:   modernize-use-auto.MinTypeNameLength
+    value: '8'
+  - key:   readability-function-cognitive-complexity.Threshold
+    value: '25'
+  - key:   cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor
+    value: 'true'
