@@ -44,7 +44,8 @@ struct ChannelAssignment {
 struct NeuronDef {
     int         id{-1};
     std::string name;
-    float       capacitance_nF{10.0f}; ///< membrane capacitance
+    std::string cell_type;             ///< NeuroML2 component id, e.g. "GenericNeuronCell"
+    float       capacitance_nF{10.0f}; ///< membrane capacitance (treated as pF)
     float       v_initial_mV{-65.0f};  ///< initial membrane potential
     std::vector<ChannelAssignment> channels;
 };

@@ -12,7 +12,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.4.1] - 2026-06-16 *(current)*
+## [0.5.0] - 2026-06-16 *(current)*
+
+### Added
+
+- **c302 C2 Full connectome data** (`data/c302/c302_C2_Full.net.nml`) — official OpenWorm
+  c302 C2 reference connectome in NeuroML2 format: 302 GenericNeuronCell + 95 GenericMuscleCell
+  populations (397 total), 1084 gap junctions, 2279 chemical synapses, 552 NMJs.
+- **`ca_boyle` channel** (`src/cpp/src/neural/ChannelKinetics.cpp`) — voltage-gated Ca²⁺
+  (Boyle & Cohen 2008); two-gate model: activation gate e² (v_half=−3.36 mV, k=6.748 mV,
+  τ=0.100 ms) × inactivation gate f (v_half=25.18 mV, k=−5.032 mV, τ=150.88 ms); E_rev=10 mV.
+  Also added c302 channel name aliases: `k_slow`, `k_fast`, `Leak`, `ca_boyle` and their
+  `*_muscle` variants.
+- **`cell_type` field** (`src/cpp/include/io/NetworkConfig.h` `NeuronDef`) — stores the
+  NeuroML2 component id (e.g. `"GenericNeuronCell"`, `"GenericMuscleCell"`) so biophysics and
+  channel assignments are applied per cell type.
+- **Cell-type-aware biophysics parser** (`src/cpp/src/io/NeuroMLLoader.cpp`) — `extractCellBlock`
+  + `applyCellBiophysics` lambdas ensure neuron and muscle channel densities + capacitances
+  are assigned independently; `resolveCellRef()` resolves c302 C2 path form
+  `../POP/0/GenericNeuronCell` to a `NeuronDef` id.
+- **`connectome_trace` CLI tool** (`src/cpp/tools/connectome_trace.cpp`) — usage:
+  `connectome_trace <nml_file> <T_ms> <dt_ms> <neuron_names>` (comma-separated);
+  outputs CSV voltage traces on stdout, load summary on stderr.
+- **`test_connectome_load` integration test** (`src/cpp/tests/io/test_connectome_load.cpp`) —
+  5 assertions: population count (397), connectivity (≥1000 GJ, ≥1500 chem synapses, valid
+  id ranges), biophysics (AVAL[0]: 4 channels, C_m≈5 pF, cell_type=GenericNeuronCell),
+  key-neuron existence (AVAL[0], AVBL[0]), integrator stability (100 steps, no NaN).
+- **`notebooks/project_tour.ipynb`** — v0.5.0 section: build + test output cell (all 5 tests
+  PASS) and 500 ms voltage-trace plot for AVAL, AVAR, AVBL, AVBR, DB1, VB1 interneurons.
+
+---
+
+## [0.4.1] - 2026-06-16
 
 ### Added
 

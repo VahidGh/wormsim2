@@ -1,6 +1,6 @@
 # wormsim2
 
-[![Version](https://img.shields.io/badge/version-v0.4.1-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.5.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-C%2B%2B20-blue?style=flat-square)](src/cpp/)
 [![Backends](https://img.shields.io/badge/backends-CPU%20%7C%20CUDA%20%7C%20OpenCL-76b900?style=flat-square)](docs/research/00-motivation-objectives-related-work.md)
@@ -96,8 +96,8 @@ wormsim2/
 │   │   ├── src/io/                                    ← NEURONLoader, NeuroMLLoader, etc.
 │   │   ├── include/neural/                            ← ChannelKinetics, NeuralState, NeuralIntegrator headers
 │   │   ├── src/neural/                                ← HH ODE integrator, Rush–Larsen gates
-│   │   ├── tools/                                     ← neural_trace: CSV data runner for notebook demos
-│   │   └── tests/                                     ← CTest suites (io: 2/2, neural: 2/2)
+│   │   ├── tools/                                     ← neural_trace, connectome_trace: CSV data runners
+│   │   └── tests/                                     ← CTest suites (io: 3/3, neural: 2/2)
 │   └── python/notebooks/                              ← validation & analysis (planned)
 └── config/                                            ← run configuration (planned)
 ```
@@ -118,7 +118,9 @@ Track progress in [docs/ISSUES.md](docs/ISSUES.md) and [CHANGELOG.md](CHANGELOG.
 | C++20 quality checker (72 static checks, 12 categories)                   | **Done**                  |
 | `src/cpp/neural/` — HH ODE integrator                                  | **Done** (2/2 tests pass) |
 | `src/cpp/tools/neural_trace` — CSV data runner (6 scenarios)           | **Done**                  |
-| `notebooks/project_tour.ipynb` — C++ output demos + Boyle-Cohen CV     | **Done**                  |
+| `data/c302/c302_C2_Full.net.nml` — c302 C2 full connectome             | **Done**                  |
+| `src/cpp/tools/connectome_trace` — full-connectome trace tool          | **Done** (5/5 tests pass) |
+| `notebooks/project_tour.ipynb` — C++ output demos + Boyle-Cohen CV + v0.5 | **Done**              |
 | FEM body (`FEMBody`)                                                    | Planned                         |
 | Compute backends (OpenCL / CUDA)                                          | Planned                         |
 | Python validation layer                                                   | Planned                         |

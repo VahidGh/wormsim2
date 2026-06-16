@@ -2,6 +2,7 @@
 #include "io/NEURONLoader.h"
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <iostream>
 #include <regex>
@@ -41,6 +42,40 @@ int extractInstanceIndex(const std::string& instance_id) {
     return 0;
 }
 
+/// Resolve a c302 NeuroML2 cell reference to a neuron id.
+///
+/// Handles two formats:
+///   - Direct name: "AVBL[0]"
+///   - Path form:   "../AVBL/0/GenericNeuronCell"  (c302 C2 network files)
+///
+/// Returns -1 when the reference cannot be resolved.
+int resolveCellRef(const std::string& ref, const NetworkConfig& cfg) {
+    // Direct match first
+    if (const NeuronDef* nd = cfg.find_neuron(ref)) return nd->id;
+
+    // Parse path form — split by '/', skip ".." and "Generic*" tokens,
+    // treat a digit-only token as the instance index.
+    std::string pop_id;
+    std::string instance_str = "0";
+    std::istringstream ss(ref);
+    std::string tok;
+    while (std::getline(ss, tok, '/')) {
+        if (tok.empty() || tok == "..") continue;
+        if (tok.starts_with("Generic")) continue;   // C++20
+        const bool is_num = std::ranges::all_of(tok, ::isdigit);
+        if (is_num && !pop_id.empty()) {
+            instance_str = tok;
+        } else if (!is_num) {
+            pop_id = tok;
+        }
+    }
+    if (!pop_id.empty()) {
+        const std::string name = pop_id + "[" + instance_str + "]";
+        if (const NeuronDef* nd = cfg.find_neuron(name)) return nd->id;
+    }
+    return -1;
+}
+
 } // anonymous namespace
 
 // ---------------------------------------------------------------------------
@@ -70,46 +105,34 @@ float NeuroMLLoader::getFloatAttr(const std::string& element_text,
 // ---------------------------------------------------------------------------
 
 void NeuroMLLoader::parsePopulations(const std::string& xml, NetworkConfig& cfg) {
-    // <population id="..." component="..." size="..." />  (NeuroML2 short form)
-    // <population id="..." component="..."><instance id="..."/></population>
-    const std::regex pop_re(R"(<population\s+([^>]*)>)",
-                             std::regex::icase);
-    const std::regex inst_re(R"(<instance\s+id\s*=\s*["']([^"']*)["'])",
-                              std::regex::icase);
+    // Only parse populations inside <network>...</network> to avoid matching
+    // cell-definition <population> elements in other NeuroML2 contexts.
+    const auto net_start = xml.find("<network");
+    const auto net_end   = xml.rfind("</network>");
+    const std::string network_xml =
+        (net_start != std::string::npos && net_end != std::string::npos)
+        ? xml.substr(net_start, net_end - net_start + 10)
+        : xml;
 
-    std::sregex_iterator pop_it(xml.begin(), xml.end(), pop_re);
+    // <population id="..." component="..." size="N" type="populationList">
+    const std::regex pop_re(R"(<population\s+([^>]*)>)", std::regex::icase);
+
+    std::sregex_iterator pop_it(network_xml.begin(), network_xml.end(), pop_re);
     const std::sregex_iterator end;
     for (; pop_it != end; ++pop_it) {
-        const std::string pop_text = (*pop_it)[1].str();
-        const std::string pop_id   = getAttribute(pop_text, "id");
-        const std::string size_str = getAttribute(pop_text, "size");
+        const std::string pop_text  = (*pop_it)[1].str();
+        const std::string pop_id    = getAttribute(pop_text, "id");
+        const std::string component = getAttribute(pop_text, "component");
+        const std::string size_str  = getAttribute(pop_text, "size");
 
-        if (!size_str.empty()) {
-            // Short form: size attribute gives neuron count
-            const int size = toInt(size_str);
-            for (int i = 0; i < size; ++i) {
-                NeuronDef nd;
-                nd.id   = static_cast<int>(cfg.neurons.size());
-                nd.name = pop_id + "[" + std::to_string(i) + "]";
-                cfg.neurons.push_back(std::move(nd));
-            }
-        }
-        // Long form with <instance> elements is handled by scanning the full xml
-    }
+        if (pop_id.empty() || size_str.empty()) continue;
 
-    // Long form: pick up any <instance id="..."> not already covered
-    std::sregex_iterator inst_it(xml.begin(), xml.end(), inst_re);
-    for (; inst_it != end; ++inst_it) {
-        const std::string inst_id = (*inst_it)[1].str();
-        // Avoid duplicate inserts — check by name
-        bool found = false;
-        for (const auto& n : cfg.neurons) {
-            if (n.name == inst_id) { found = true; break; }
-        }
-        if (!found) {
+        const int size = toInt(size_str);
+        for (int i = 0; i < size; ++i) {
             NeuronDef nd;
-            nd.id   = static_cast<int>(cfg.neurons.size());
-            nd.name = inst_id;
+            nd.id        = static_cast<int>(cfg.neurons.size());
+            nd.name      = pop_id + "[" + std::to_string(i) + "]";
+            nd.cell_type = component;
             cfg.neurons.push_back(std::move(nd));
         }
     }
@@ -120,61 +143,92 @@ void NeuroMLLoader::parsePopulations(const std::string& xml, NetworkConfig& cfg)
 // ---------------------------------------------------------------------------
 
 void NeuroMLLoader::parseBiophysics(const std::string& xml, NetworkConfig& cfg) {
-    // <channelDensity id="..." ionChannel="..." condDensity="..." erev="..." />
-    const std::regex cd_re(
-        R"(<channelDensity\s+([^/]*)/>)",
-        std::regex::icase);
+    // Extract substring for one <cell id="cell_id">...</cell> block.
+    auto extractCellBlock = [&](const std::string& cell_id) -> std::string {
+        const std::regex cell_open(
+            R"(<cell\b[^>]*\bid\s*=\s*["'])" + cell_id + R"(["'][^>]*>)",
+            std::regex::icase);
+        std::smatch m;
+        if (!std::regex_search(xml, m, cell_open)) return {};
+        const auto tag_end   = static_cast<std::size_t>(m.suffix().first - xml.begin());
+        const auto close_pos = xml.find("</cell>", tag_end);
+        if (close_pos == std::string::npos) return {};
+        return xml.substr(tag_end, close_pos - tag_end);
+    };
 
-    std::sregex_iterator it(xml.begin(), xml.end(), cd_re);
-    const std::sregex_iterator end;
-    for (; it != end; ++it) {
-        const std::string elem = (*it)[1].str();
-        const std::string channel_id = getAttribute(elem, "ionChannel");
-        const float cond_density     = getFloatAttr(elem, "condDensity");
-        const float erev             = getFloatAttr(elem, "erev");
+    // Parse channel densities + capacitance from a cell block and apply them
+    // to neurons whose cell_type matches `component_type`.
+    auto applyCellBiophysics = [&](const std::string& block,
+                                    const std::string& component_type) {
+        if (block.empty()) return;
 
-        if (channel_id.empty()) continue;
+        const std::regex cd_re(
+            R"(<channelDensity\s+((?:[^/>]|/[^>])*)\s*/>)",
+            std::regex::icase);
+        const std::regex cap_re(
+            R"(<specificCapacitance\s+value\s*=\s*["']([^"']*)["'])",
+            std::regex::icase);
 
-        // Ensure channel exists in the catalogue (may be populated later from .mod)
-        if (cfg.channels.find(channel_id) == cfg.channels.end()) {
-            ChannelDef ch;
-            ch.id        = channel_id;
-            ch.gbar      = cond_density;
-            ch.e_rev_mV  = erev;
-            cfg.channels[channel_id] = std::move(ch);
-        } else {
-            // Update erev if we have a better value
-            if (erev != 0.0f) cfg.channels[channel_id].e_rev_mV = erev;
+        std::smatch cap_m;
+        const float cap = std::regex_search(block, cap_m, cap_re)
+                          ? getFloatAttr(cap_m[0].str(), "value") : 0.0f;
+
+        struct Entry { std::string id; float g; float erev; };
+        std::vector<Entry> entries;
+        std::sregex_iterator it(block.begin(), block.end(), cd_re);
+        for (const std::sregex_iterator end_it; it != end_it; ++it) {
+            const std::string elem = (*it)[1].str();
+            Entry e;
+            e.id   = getAttribute(elem, "ionChannel");
+            e.g    = getFloatAttr(elem, "condDensity");
+            e.erev = getFloatAttr(elem, "erev");
+            if (!e.id.empty()) entries.push_back(std::move(e));
         }
 
-        // Apply this channel assignment to all neurons (global biophysics)
-        // Cell-group–specific biophysics requires a more complex two-pass parse;
-        // treat as a global density until that is implemented (ISSUE-009).
+        for (const auto& e : entries) {
+            if (cfg.channels.find(e.id) == cfg.channels.end()) {
+                ChannelDef ch; ch.id = e.id; ch.gbar = e.g; ch.e_rev_mV = e.erev;
+                cfg.channels[e.id] = std::move(ch);
+            } else if (e.erev != 0.0f) {
+                cfg.channels[e.id].e_rev_mV = e.erev;
+            }
+        }
+
         for (auto& neuron : cfg.neurons) {
-            // Check if assignment already present
-            bool already = false;
-            for (const auto& ca : neuron.channels) {
-                if (ca.channel_id == channel_id) { already = true; break; }
-            }
-            if (!already) {
-                ChannelAssignment ca;
-                ca.channel_id          = channel_id;
-                ca.conductance_density = cond_density;
-                neuron.channels.push_back(std::move(ca));
+            if (!component_type.empty() && neuron.cell_type != component_type) continue;
+            if (cap > 0.0f) neuron.capacitance_nF = cap;
+            for (const auto& e : entries) {
+                bool already = false;
+                for (const auto& ca : neuron.channels)
+                    if (ca.channel_id == e.id) { already = true; break; }
+                if (!already)
+                    neuron.channels.push_back(ChannelAssignment{e.id, e.g});
             }
         }
-    }
+    };
 
-    // Also pick up membrane properties (capacitance)
-    // <specificCapacitance value="..." />
-    const std::regex cap_re(
-        R"(<specificCapacitance\s+value\s*=\s*["']([^"']*)["'])",
-        std::regex::icase);
-    std::smatch cap_m;
-    if (std::regex_search(xml, cap_m, cap_re)) {
-        const float cap = toFloat(cap_m[1].str());
-        if (cap > 0.0f) {
-            for (auto& n : cfg.neurons) n.capacitance_nF = cap;
+    // Apply biophysics per cell type so neuron and muscle channels stay separate.
+    applyCellBiophysics(extractCellBlock("GenericNeuronCell"), "GenericNeuronCell");
+    applyCellBiophysics(extractCellBlock("GenericMuscleCell"), "GenericMuscleCell");
+
+    // Fallback: if no <cell> blocks found, parse globally (older NML2 files).
+    if (cfg.channels.empty()) {
+        const std::regex cd_re(
+            R"(<channelDensity\s+((?:[^/>]|/[^>])*)\s*/>)",
+            std::regex::icase);
+        std::sregex_iterator it(xml.begin(), xml.end(), cd_re);
+        for (const std::sregex_iterator end_it; it != end_it; ++it) {
+            const std::string elem       = (*it)[1].str();
+            const std::string channel_id = getAttribute(elem, "ionChannel");
+            const float cond             = getFloatAttr(elem, "condDensity");
+            const float erev             = getFloatAttr(elem, "erev");
+            if (channel_id.empty()) continue;
+            if (cfg.channels.find(channel_id) == cfg.channels.end()) {
+                ChannelDef ch; ch.id = channel_id; ch.gbar = cond; ch.e_rev_mV = erev;
+                cfg.channels[channel_id] = std::move(ch);
+            }
+            for (auto& n : cfg.neurons)
+                n.channels.push_back(ChannelAssignment{channel_id, cond});
         }
     }
 }
@@ -189,8 +243,10 @@ void NeuroMLLoader::parseElectricalProjections(const std::string& xml,
     //   <electricalConnectionInstanceW id="..." preCell="..." postCell="..." weight="..." />
     // </electricalProjection>
 
+    // Allow '/' inside attribute values (c302 uses "../POP/0/Component" paths).
+    // Pattern: any char that is not '/' or '>', OR a '/' not followed by '>'.
     const std::regex conn_re(
-        R"(<electricalConnectionInstance(?:W)?\s+([^/]*)/>)",
+        R"(<electricalConnectionInstance(?:W)?\s+((?:[^/>]|/[^>])*)\s*/>)",
         std::regex::icase);
 
     std::sregex_iterator it(xml.begin(), xml.end(), conn_re);
@@ -203,21 +259,8 @@ void NeuroMLLoader::parseElectricalProjections(const std::string& xml,
 
         if (pre_cell.empty() || post_cell.empty()) continue;
 
-        // Resolve cell references to neuron ids by instance index in the vector
-        // c302 uses "POPULATION[index]" format
-        auto find_by_name = [&](const std::string& cell_ref) -> int {
-            const NeuronDef* nd = cfg.find_neuron(cell_ref);
-            if (nd) return nd->id;
-            // Try matching the tail of the cell reference path (../POPULATION[N])
-            const auto slash = cell_ref.rfind('/');
-            const std::string short_ref =
-                (slash != std::string::npos) ? cell_ref.substr(slash + 1) : cell_ref;
-            nd = cfg.find_neuron(short_ref);
-            return nd ? nd->id : -1;
-        };
-
-        const int a = find_by_name(pre_cell);
-        const int b = find_by_name(post_cell);
+        const int a = resolveCellRef(pre_cell,  cfg);
+        const int b = resolveCellRef(post_cell, cfg);
         if (a < 0 || b < 0) continue;
 
         GapJunctionDef gj;
@@ -240,18 +283,8 @@ void NeuroMLLoader::parseContinuousProjections(const std::string& xml,
     // </continuousProjection>
 
     const std::regex conn_re(
-        R"(<continuousConnectionInstance(?:W)?\s+([^/]*)/>)",
+        R"(<continuousConnectionInstance(?:W)?\s+((?:[^/>]|/[^>])*)\s*/>)",
         std::regex::icase);
-
-    auto find_neuron_id = [&](const std::string& ref) -> int {
-        const NeuronDef* nd = cfg.find_neuron(ref);
-        if (nd) return nd->id;
-        const auto slash = ref.rfind('/');
-        const std::string short_ref =
-            (slash != std::string::npos) ? ref.substr(slash + 1) : ref;
-        nd = cfg.find_neuron(short_ref);
-        return nd ? nd->id : -1;
-    };
 
     std::sregex_iterator it(xml.begin(), xml.end(), conn_re);
     const std::sregex_iterator end;
@@ -263,8 +296,8 @@ void NeuroMLLoader::parseContinuousProjections(const std::string& xml,
 
         if (pre_cell.empty() || post_cell.empty()) continue;
 
-        const int pre_id  = find_neuron_id(pre_cell);
-        const int post_id = find_neuron_id(post_cell);
+        const int pre_id  = resolveCellRef(pre_cell,  cfg);
+        const int post_id = resolveCellRef(post_cell, cfg);
         if (pre_id < 0 || post_id < 0) continue;
 
         // Check if post-synaptic target is a muscle (muscle ids are in NMJ territory)

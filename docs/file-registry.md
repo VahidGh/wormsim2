@@ -24,6 +24,14 @@
 
 ---
 
+## `data/`
+
+| File | Description | Update triggers |
+|---|---|---|
+| `data/c302/c302_C2_Full.net.nml` | OpenWorm c302 C2 reference connectome in NeuroML2 format — 302 GenericNeuronCell + 95 GenericMuscleCell, 1084 gap junctions, 2279 chemical synapses, 552 NMJs; canonical source for all connectome-level tests and notebook demos | New upstream c302 release; format change in NeuroML2 output; partial files for faster dev iteration added |
+
+---
+
 ## `notebooks/`
 
 | File | Description | Update triggers |
@@ -92,7 +100,8 @@
 | File | Description | Update triggers |
 |---|---|---|
 | `neural_trace.cpp` | CLI data runner for notebook demonstrations — 6 scenarios (`nca_decay`, `kd_gate`, `gap_junc`, `multi_ch`, `boyle2008`, `chan_kinetics`); outputs CSV to stdout; called from `notebooks/project_tour.ipynb` via Docker | New scenario needed for notebook; new channel in catalog; new integrator feature to demonstrate |
-| `CMakeLists.txt` | Build target `neural_trace` (always built, not test-gated) | New tool executable added |
+| `connectome_trace.cpp` | CLI tool: `connectome_trace <nml> <T_ms> <dt_ms> <neuron_names>` → CSV voltage traces (stdout) + load summary (stderr); loads the full connectome via `NetworkInputParser::load()` and runs `NeuralIntegrator` | New integrator feature; new CLI argument; notebook v0.5+ cell update needed |
+| `CMakeLists.txt` | Build targets `neural_trace`, `connectome_trace` (always built, not test-gated) | New tool executable added |
 
 ---
 
@@ -139,3 +148,4 @@
 |---|---|---|
 | `test_nmodl_parser.cpp` | CTest suite for NMODL parsing (`parseMod`, `parseModDir`, multi-channel, gate variables, `find_neuron`) | New `NEURONLoader` method; new struct field; regression found |
 | `test_perturbation.cpp` | CTest suite for perturbation spec (`channel.*`, `gap_junction.*`, `neuron.*`, unknown key, missing file) | New `PerturbationConfig` key; new struct field; regression found |
+| `test_connectome_load.cpp` | CTest integration test for c302 C2 Full connectome: 5 assertions (population counts, connectivity, biophysics, key neurons, integrator stability); locates NML file via `WORMSIM2_SOURCE_DIR` or upward walk | New connectome file added; `NetworkConfig` struct change; new `NeuralIntegrator` feature |

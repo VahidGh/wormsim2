@@ -112,6 +112,22 @@ const ChannelSpec kLeakBC{
     .gates    = {}   // pure ohmic
 };
 
+// ca_boyle — voltage-gated Ca²⁺ channel (Boyle-Cohen 2008 / c302 C2)
+// Parameters from ca_boyle.mod (openworm/CElegansNeuroML).
+// Gate e² (activation, τ=0.10 ms) × gate f (inactivation, τ=150.9 ms).
+// Ca²⁺-dependent h gate is omitted (treated as 1; negligible at resting [Ca²⁺]ᵢ).
+// E_rev set to eca = +40 mV (Nernst Ca²⁺ at c302 default concentrations).
+const ChannelSpec kCABoyle{
+    .g_bar    = 1.0f,
+    .e_rev_mV = 40.0f,
+    .gates    = {
+        GateKinetics{ .v_half = -3.3568f,  .k =  6.74821f, .tau_0 = 0.100027f,
+                      .tau_a  = 0.0f,      .initial = 0.00023f, .power = 2 },
+        GateKinetics{ .v_half = 25.1815f,  .k = -5.03176f, .tau_0 = 150.88f,
+                      .tau_a  = 0.0f,      .initial = 1.0f,    .power = 1 }
+    }
+};
+
 const ChannelSpec kUnknown{};
 
 } // anonymous namespace
@@ -126,6 +142,12 @@ const ChannelSpec& channel_spec(std::string_view id) noexcept {
     if (id == "KSLOW_BC") return kKSlowBC;
     if (id == "KFAST_BC") return kKFastBC;
     if (id == "LEAK_BC")  return kLeakBC;
+    if (id == "CA_BOYLE") return kCABoyle;
+    // c302 C2 channel aliases (ionChannel IDs used in NeuroML2 network files)
+    if (id == "k_slow" || id == "k_slow_muscle") return kKSlowBC;
+    if (id == "k_fast" || id == "k_fast_muscle") return kKFastBC;
+    if (id == "Leak")                             return kLeakBC;
+    if (id == "ca_boyle" || id == "ca_boyle_muscle") return kCABoyle;
     return kUnknown;
 }
 
