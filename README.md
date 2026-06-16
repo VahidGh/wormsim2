@@ -92,11 +92,14 @@ wormsim2/
 ├── src/
 │   ├── cpp/
 │   │   ├── CMakeLists.txt
-│   │   ├── include/io/                                    ← NetworkConfig, loaders, parser headers
-│   │   ├── src/io/                                        ← NEURONLoader, NeuroMLLoader, etc.
-│   │   └── tests/io/                                      ← CTest suites (2/2 pass)
-│   └── python/notebooks/                                  ← validation & analysis (planned)
-└── config/                                                 ← run configuration (planned)
+│   │   │   ├── include/io/                                ← NetworkConfig, loaders, parser headers
+│   │   ├── src/io/                                    ← NEURONLoader, NeuroMLLoader, etc.
+│   │   ├── include/neural/                            ← ChannelKinetics, NeuralState, NeuralIntegrator headers
+│   │   ├── src/neural/                                ← HH ODE integrator, Rush–Larsen gates
+│   │   ├── tools/                                     ← neural_trace: CSV data runner for notebook demos
+│   │   └── tests/                                     ← CTest suites (io: 2/2, neural: 2/2)
+│   └── python/notebooks/                              ← validation & analysis (planned)
+└── config/                                            ← run configuration (planned)
 ```
 
 ---
@@ -112,9 +115,10 @@ Track progress in [docs/ISSUES.md](docs/ISSUES.md) and [CHANGELOG.md](CHANGELOG.
 | [Architecture design](docs/design/02-architecture-design.md)                 | Draft                           |
 | `src/cpp/io/` — dual-format network loader                             | **Done** (2/2 tests pass) |
 | CI pipeline (build/test/cppcheck/clang-tidy/coverage)                     | **Done**                  |
-| C++20 quality checker (66 static checks, 12 categories)                   | **Done**                  |
+| C++20 quality checker (72 static checks, 12 categories)                   | **Done**                  |
 | `src/cpp/neural/` — HH ODE integrator                                  | **Done** (2/2 tests pass) |
-| FEM body (`FEMBody`)                                                    | Planned                         |
+| `src/cpp/tools/neural_trace` — CSV data runner (5 scenarios)           | **Done**                  |
+| `notebooks/project_tour.ipynb` — C++ output demos (Scenarios 1–5)      | **Done**                  |
 | FEM body (`FEMBody`)                                                    | Planned                         |
 | Compute backends (OpenCL / CUDA)                                          | Planned                         |
 | Python validation layer                                                   | Planned                         |

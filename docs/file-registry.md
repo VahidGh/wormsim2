@@ -28,7 +28,7 @@
 
 | File | Description | Update triggers |
 |---|---|---|
-| `notebooks/project_tour.ipynb` | Version-by-version project tour: one section per MINOR/MAJOR release with runnable input→output examples (Python reference implementation of C++ core) | New MINOR or MAJOR version released; new example cell needed; channel catalog parameter changed |
+| `notebooks/project_tour.ipynb` | Version-by-version project tour: one section per MINOR/MAJOR release. C++ binaries run via Docker emit CSV; Python reads and plots. No algorithm reimplemented in Python. | New MINOR or MAJOR version released; new `neural_trace` scenario added; channel catalog parameter changed |
 
 ---
 
@@ -87,6 +87,15 @@
 | `NeuralState.cpp` | `NeuralState::allocate` implementation | State layout change |
 | `NeuralIntegrator.cpp` | `build_layout`, `update_gates`, `update_synapses`, `update_voltages`, `gate_product` | Numerical scheme change; new current type; gap-junction algorithm change |
 
+### `src/cpp/tools/`
+
+| File | Description | Update triggers |
+|---|---|---|
+| `neural_trace.cpp` | CLI data runner for notebook demonstrations — 5 scenarios (`nca_decay`, `kd_gate`, `gap_junc`, `multi_ch`, `chan_kinetics`); outputs CSV to stdout; called from `notebooks/project_tour.ipynb` via Docker | New scenario needed for notebook; new channel in catalog; new integrator feature to demonstrate |
+| `CMakeLists.txt` | Build target `neural_trace` (always built, not test-gated) | New tool executable added |
+
+---
+
 ### `src/cpp/tests/neural/`
 
 | File | Description | Update triggers |
@@ -121,7 +130,7 @@
 
 | File | Description | Update triggers |
 |---|---|---|
-| `cpp_quality_checker.py` | 66-check Python static analyser (12 categories: TC/FP/NS/FN/RA/CL/TM/SL/LB/PS/OL/DS); runs as CTest `cpp_quality`; exit 1 on first regression | New C++ module added (add checks); check removed/relaxed; new category needed |
+| `cpp_quality_checker.py` | 72-check Python static analyser (12 categories: TC/FP/NS/FN/RA/CL/TM/SL/LB/PS/OL/DS); runs as CTest `cpp_quality`; exit 1 on first regression | New C++ module added (add checks); check removed/relaxed; new category needed |
 | `CMakeLists.txt` | Wires `cpp_quality_checker.py` into CTest via `find_package(Python3)` | Checker renamed; timeout change; new static test added |
 
 ### `src/cpp/tests/io/`

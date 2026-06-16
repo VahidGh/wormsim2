@@ -1,0 +1,2 @@
+add_executable(neural_trace neural_trace.cpp)
+target_link_libraries(neural_trace PRIVATE wormsim2_neural)

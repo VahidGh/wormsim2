@@ -28,6 +28,11 @@ target_link_libraries(wormsim2_neural PUBLIC wormsim2_io)
 target_compile_features(wormsim2_neural PUBLIC cxx_std_20)
 
 # ---------------------------------------------------------------------------
+# Tools (notebook data runners — always built)
+# ---------------------------------------------------------------------------
+add_subdirectory(tools)
+
+# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 if(WORMSIM2_BUILD_TESTS)
