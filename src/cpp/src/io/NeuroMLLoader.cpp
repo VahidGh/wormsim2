@@ -311,6 +311,7 @@ void NeuroMLLoader::parseContinuousProjections(const std::string& xml,
             NMJDef nmj;
             nmj.motor_neuron_id = pre_id;
             nmj.muscle_id       = extractInstanceIndex(post_cell); // 0..94
+            nmj.post_neuron_id  = post_id;  // resolved index in cfg.neurons
             nmj.weight          = weight;
             cfg.nmj_connections.push_back(nmj);
         } else {

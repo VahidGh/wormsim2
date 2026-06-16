@@ -56,10 +56,15 @@ private:
     std::vector<NeuronLayout> layout_;
 
     // Graded synapse threshold / slope (shared across all chemical synapses)
-    static constexpr float kVthSyn  = -55.0f; ///< presynaptic release threshold (mV)
-    static constexpr float kKSyn    =   5.0f; ///< release slope (mV)
-    static constexpr float kVoltMin = -150.0f;
-    static constexpr float kVoltMax =   80.0f;
+    static constexpr float kVthSyn     = -55.0f; ///< presynaptic release threshold (mV)
+    static constexpr float kKSyn       =   5.0f; ///< release slope (mV)
+    static constexpr float kVoltMin    = -150.0f;
+    static constexpr float kVoltMax    =   80.0f;
+
+    // Neuromuscular junction parameters (motoneuron → body-wall muscle)
+    static constexpr float kNMJGMax    =   0.5f;  ///< max NMJ conductance per unit weight (nS)
+    static constexpr float kNMJERev    =   0.0f;  ///< NMJ reversal potential (mV, excitatory)
+    static constexpr float kNMJTauDecay = 30.0f;  ///< NMJ synaptic decay time constant (ms)
 
     void  build_layout();
     void  update_gates(float dt);

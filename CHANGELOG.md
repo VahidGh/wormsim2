@@ -12,7 +12,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.5.1] - 2026-06-16 *(current)*
+## [0.6.0] - 2026-06-16 *(current)*
+
+### Added
+
+- **`NMJDef.post_neuron_id`** (`src/cpp/include/io/NetworkConfig.h`) — resolved neuron
+  index in `cfg.neurons` stored during NeuroML2 parsing (was previously discarded);
+  `muscle_id` (0..94) retained for reference.
+- **`NeuralState::s_nmj[]`** (`src/cpp/include/neural/NeuralState.h`,
+  `src/cpp/src/neural/NeuralState.cpp`) — per-NMJ synaptic activation variable,
+  allocated alongside `s_syn[]`.
+- **NMJ integration in `NeuralIntegrator`** (`src/cpp/src/neural/NeuralIntegrator.cpp`,
+  `src/cpp/include/neural/NeuralIntegrator.h`) — three constants: kNMJGMax=0.5 nS,
+  kNMJERev=0.0 mV, kNMJTauDecay=30 ms. `update_synapses` updates `s_nmj[ki]` via
+  graded release from motoneuron; `update_voltages` applies NMJ conductance to target
+  muscle cell; `reset` zeroes `s_nmj[]`.
+- **`test_nmj`** (`src/cpp/tests/neural/test_nmj.cpp`, `CMakeLists.txt`) — 3-assertion
+  CTest (state allocation, NMJ depolarization +2 mV threshold, no-NMJ control ±5 mV).
+  All PASS. Full 7/7 CTest suite green.
+- **`NeuroMLLoader`** one-line fix: sets `nmj.post_neuron_id = post_id` so resolved
+  neuron index is preserved through the parse stage.
+- **`notebooks/project_tour.ipynb`** — v0.6.0 section: build cell, 500 ms motor circuit
+  demo (AVBL→DB1→MDL07/MDR07), CV-6.1 (552 NMJs loaded, ΔV_muscle=66.95 mV, L/R
+  symmetry 0.07 mV, muscle Vm_rest=−65 mV in published range — ALL PASS), CV-6.2
+  cumulative 11/11. System CV SCV-5: 5/5 ALL PASS. Published sources added:
+  [Richmond 2009 JoVE](https://doi.org/10.3791/1165) (body-wall muscle Vm_rest),
+  [Jospin et al. 2002 J Neurosci](https://doi.org/10.1523/JNEUROSCI.22-21-09265.2002).
+- **`docs/images/`** — `v060_nmj_traces.png`, `cv_6_1_nmj_coupling.png`,
+  `ref_neuronmuscle_openworm.png` (openworm reference screenshot),
+  `cv_6_1e_nmj_comparison.png` (3-panel CV-6.1E: reference | digitized traces | wormsim2).
+- **`README.md`** — added `cv_5_4_muscle_trace.png` + `cv_6_1e_nmj_comparison.png` as
+  displayed images with full CV tables including published DOI references.
+
+---
+
+## [0.5.1] - 2026-06-16
 
 ### Added
 

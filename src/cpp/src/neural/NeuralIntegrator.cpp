@@ -64,6 +64,7 @@ void NeuralIntegrator::reset() {
         }
     }
     std::fill(state_.s_syn.begin(), state_.s_syn.end(), 0.0f);
+    std::fill(state_.s_nmj.begin(), state_.s_nmj.end(), 0.0f);
 }
 
 // ---------------------------------------------------------------------------
@@ -109,6 +110,19 @@ void NeuralIntegrator::update_synapses(float dt) {
 
         state_.s_syn[si] = s_inf + (state_.s_syn[si] - s_inf)
                            * std::exp(-dt / syn.tau_decay_ms);
+    }
+
+    // NMJ update: same graded-release kinetics, slower decay
+    for (std::size_t ki = 0; ki < cfg_.nmj_connections.size(); ++ki) {
+        const auto& nmj = cfg_.nmj_connections[ki];
+        const int   pre = nmj.motor_neuron_id;
+        if (pre < 0 || static_cast<std::size_t>(pre) >= state_.n_neurons()) continue;
+
+        const float v_pre = state_.v[static_cast<std::size_t>(pre)];
+        const float s_inf = 1.0f / (1.0f + std::exp((kVthSyn - v_pre) / kKSyn));
+
+        state_.s_nmj[ki] = s_inf + (state_.s_nmj[ki] - s_inf)
+                           * std::exp(-dt / kNMJTauDecay);
     }
 }
 
@@ -157,6 +171,15 @@ void NeuralIntegrator::update_voltages(float dt, std::span<const float> i_ext) {
             const float g_s = syn.g_max_nS * state_.s_syn[si];
             g_total += g_s;
             I_rhs   += g_s * syn.e_rev_mV;
+        }
+
+        // NMJ currents (motoneuron → body-wall muscle)
+        for (std::size_t ki = 0; ki < cfg_.nmj_connections.size(); ++ki) {
+            const auto& nmj = cfg_.nmj_connections[ki];
+            if (nmj.post_neuron_id != i) continue;
+            const float g_nmj = kNMJGMax * nmj.weight * state_.s_nmj[ki];
+            g_total += g_nmj;
+            I_rhs   += g_nmj * kNMJERev;
         }
 
         // Conductance-method solve (implicit in V_i)

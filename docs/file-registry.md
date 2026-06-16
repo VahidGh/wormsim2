@@ -30,6 +30,10 @@
 |---|---|---|
 | `docs/images/v051_muscle_traces.png` | C++ muscle_trace demo output at 100/400/700 pA — extracted from `notebooks/project_tour.ipynb` v0.5.1 section | New `muscle_trace` run with changed parameters; notebook re-executed |
 | `docs/images/cv_5_4_muscle_trace.png` | CV-5.4 comparison plot: C++ traces vs Boyle & Cohen 2008 Fig. 2A digitized data — extracted from `notebooks/project_tour.ipynb` CV-5.4 cell | CV-5.4 cell re-run; new reference data; pass threshold change |
+| `docs/images/v060_nmj_traces.png` | v0.6.0 full motor circuit demo: AVBL→DB1→MDL07/MDR07 500 ms traces — extracted from `notebooks/project_tour.ipynb` v0.6.0 section | v0.6.0 demo cell re-run; new NMJ parameters |
+| `docs/images/cv_6_1_nmj_coupling.png` | CV-6.1 NMJ coupling plot: DB1 motoneuron vs MDL07/MDR07 muscle voltages (first 100 ms) — extracted from CV-6.1 cell | CV-6.1 cell re-run; NMJ parameter change |
+| `docs/images/ref_neuronmuscle_openworm.png` | CV-6.1E reference: openworm/muscle_model NeuronMuscle.png — jNeuroML simulation of I&F motoneuron → Boyle-Cohen muscle via expTwoSynapse (gbase=25nS). Used as published reference for NMJ ΔV validation. | Source figure updated upstream; comparison threshold changed |
+| `docs/images/cv_6_1e_nmj_comparison.png` | CV-6.1E 3-panel comparison: (1) openworm NeuronMuscle.png screenshot, (2) digitized reference traces (8 muscle APs, ΔV=68mV), (3) wormsim2 DB1→MDL07 sustained depolarisation (ΔV=67mV at 400ms) — extracted from CV-6.1E notebook cell | CV-6.1E cell re-run; digitized reference data changed |
 
 ---
 
@@ -109,6 +113,7 @@
 | File | Description | Update triggers |
 |---|---|---|
 | `neural_trace.cpp` | CLI data runner for notebook demonstrations — 7 scenarios (`nca_decay`, `kd_gate`, `gap_junc`, `multi_ch`, `boyle2008`, `chan_kinetics`, `muscle_trace`); outputs CSV to stdout; called from `notebooks/project_tour.ipynb` via Docker | New scenario needed for notebook; new channel in catalog; new integrator feature to demonstrate |
+| `test_nmj.cpp` | CTest suite for NMJ layer (3 assertions: state allocation, NMJ depolarization +2 mV, no-NMJ control ±5 mV from rest) | `NMJDef` struct change; NMJ kinetic parameter change; new assertion needed |
 | `connectome_trace.cpp` | CLI tool: `connectome_trace <nml> <T_ms> <dt_ms> <neuron_names>` → CSV voltage traces (stdout) + load summary (stderr); loads the full connectome via `NetworkInputParser::load()` and runs `NeuralIntegrator` | New integrator feature; new CLI argument; notebook v0.5+ cell update needed |
 | `CMakeLists.txt` | Build targets `neural_trace`, `connectome_trace` (always built, not test-gated) | New tool executable added |
 

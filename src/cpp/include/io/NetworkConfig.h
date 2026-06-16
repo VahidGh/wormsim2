@@ -80,7 +80,8 @@ struct GapJunctionDef {
 /// Connects a motor neuron to one of the 95 body-wall muscles (BWM 0..94).
 struct NMJDef {
     int   motor_neuron_id{-1};
-    int   muscle_id{-1}; ///< 0..94
+    int   muscle_id{-1};        ///< 0..94 (population-relative index)
+    int   post_neuron_id{-1};   ///< resolved index in cfg.neurons (302..396)
     float weight{1.0f};
 };
 

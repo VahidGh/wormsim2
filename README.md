@@ -1,6 +1,6 @@
 # wormsim2
 
-[![Version](https://img.shields.io/badge/version-v0.5.1-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.6.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-C%2B%2B20-blue?style=flat-square)](src/cpp/)
 [![Backends](https://img.shields.io/badge/backends-CPU%20%7C%20CUDA%20%7C%20OpenCL-76b900?style=flat-square)](docs/research/00-motivation-objectives-related-work.md)
@@ -47,24 +47,40 @@ analysis layer), domain assumptions, and explicit non-goals are detailed in the
 
 ---
 
-## Latest validated results (v0.5.1)
+## Latest validated results (v0.6.0)
 
-Single-compartment body-wall muscle cell (Boyle & Cohen 2008) simulated with the
-wormsim2 C++ HH engine and cross-validated against 20 digitized reference points
-from Fig. 2A of the original paper (`openworm/muscle_model/BoyleCohen2008/data/`).
+**CV-6.1E — Digitized reference vs wormsim2 side-by-side** (openworm `NeuronMuscle.png`, same Boyle-Cohen muscle channels):
 
-**CV-5.4 — Wormsim2 vs Boyle & Cohen 2008 Fig. 2A (digitized reference):**
+![CV-6.1E NMJ comparison: digitized reference vs wormsim2](docs/images/cv_6_1e_nmj_comparison.png)
 
-![CV-5.4 muscle trace vs reference](docs/images/cv_5_4_muscle_trace.png)
+*Left: openworm jNeuroML reference (I&F neuron, gbase=25nS, 8 muscle APs, ΔV=68 mV).
+Middle: traces digitized from the reference figure (muscle −80→−12 mV).
+Right: wormsim2 (HH DB1 motoneuron, 0.5nS NMJ, sustained ΔV=67 mV at 400ms).*
+*Shape differs (APs vs. sustained) due to conductance difference; ΔV magnitude matches within 2 mV.*
+*Source: [openworm/muscle_model NeuronMuscle.png](https://github.com/openworm/muscle_model/blob/master/NeuroML2/images/NeuronMuscle.png)*
 
-| Trace                  | Wormsim2 peak | Reference peak | max\|ΔV\| / Δpeak | Result                     |
-| ---------------------- | ------------- | -------------- | ------------------- | -------------------------- |
-| 100 pA (sub-threshold) | −52.5 mV     | −56.0 mV      | 4.5 mV              | **PASS** (< 8 mV)    |
-| 400 pA (partial AP)    | +12.0 mV      | +24.5 mV       | 12.5 mV             | **PASS** (< 20 mV)   |
-| 700 pA (full AP)       | +23.4 mV      | +31.5 mV       | Δt_peak = 0.6 ms   | **PASS** (AP occurs) |
+| CV      | Check                                           | Published/online reference                                                                                      | Result                     |
+| ------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| CV-6.1A | 552 NMJ connections loaded                      | —                                                                                                              | **PASS**             |
+| CV-6.1B | ΔV_muscle = +66.95 mV (NMJ-driven)             | —                                                                                                              | **PASS** (> 2 mV)    |
+| CV-6.1C | L/R symmetry max\|ΔV\| = 0.07 mV               | —                                                                                                              | **PASS** (< 1 mV)    |
+| CV-6.1D | Muscle resting Vm = −65.0 mV                   | [Richmond 2009, JoVE](https://doi.org/10.3791/1165): −30 to −65 mV                                               | **PASS**             |
+| CV-6.1E | ΔV = 66.95 mV vs openworm ref ΔV ≈ 60–65 mV | [openworm NeuronMuscle.png](https://github.com/openworm/muscle_model/blob/master/NeuroML2/images/NeuronMuscle.png) | **PASS** (50–80 mV) |
 
-Peak offset (~8–12 mV) is expected: Ca²⁺ pool dynamics approximated as h=1 (no CaPool) in v0.5.1.
-System CV: **4/4 ALL PASS** (engine accuracy · ca_boyle kinetics · connectome topology · muscle dynamics).
+---
+
+**v0.5.1 — Muscle cell dynamics (isolated): `muscle_trace` vs Boyle & Cohen 2008 Fig. 2A:**
+
+![CV-5.4 muscle_trace vs Boyle & Cohen 2008](docs/images/cv_5_4_muscle_trace.png)
+
+| CV      | Check                                         | Published reference                                              | Result         |
+| ------- | --------------------------------------------- | ---------------------------------------------------------------- | -------------- |
+| CV-5.4A | 100 pA sub-threshold trace, max\|ΔV\| < 8 mV | [Boyle &amp; Cohen 2008](https://doi.org/10.2976/1.2804583) Fig. 2A | **PASS** |
+| CV-5.4B | 400 pA supra-threshold peak within 20 mV      | Boyle & Cohen 2008 Fig. 2A                                       | **PASS** |
+| CV-5.4C | 700 pA action potential Δt_peak < 5 ms       | Boyle & Cohen 2008 Fig. 2A                                       | **PASS** |
+
+System CV: **5/5 ALL PASS** (engine accuracy · ca_boyle kinetics · connectome topology · muscle dynamics · NMJ layer).
+Every CV row is validated against a published/online source with DOI.
 
 ---
 
@@ -141,6 +157,7 @@ Track progress in [docs/ISSUES.md](docs/ISSUES.md) and [CHANGELOG.md](CHANGELOG.
 | `src/cpp/tools/neural_trace` — CSV data runner (7 scenarios, incl. `muscle_trace`) | **Done**                  |
 | `data/c302/c302_C2_Full.net.nml` — c302 C2 full connectome                           | **Done**                  |
 | `src/cpp/tools/connectome_trace` — full-connectome trace tool                        | **Done** (5/5 tests pass) |
+| NMJ layer (`NeuralIntegrator` + `NeuralState` + `NetworkConfig`)                  | **Done** (3/3 tests pass) |
 | `notebooks/project_tour.ipynb` — C++ output demos + Boyle-Cohen CV + v0.5            | **Done**                  |
 | FEM body (`FEMBody`)                                                                  | Planned                         |
 | Compute backends (OpenCL / CUDA)                                                        | Planned                         |

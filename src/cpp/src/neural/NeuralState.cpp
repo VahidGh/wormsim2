@@ -9,6 +9,7 @@ NeuralState NeuralState::allocate(const NetworkConfig& cfg, std::size_t gs) {
     s.v.assign(n, 0.0f);
     s.gate.assign(n * gs, 0.0f);
     s.s_syn.assign(static_cast<std::size_t>(cfg.synapse_count()), 0.0f);
+    s.s_nmj.assign(cfg.nmj_connections.size(), 0.0f);
     return s;
 }
 
