@@ -12,7 +12,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.4.0] - 2026-06-15 *(current)*
+## [0.4.1] - 2026-06-16 *(current)*
+
+### Added
+
+- **Boyle & Cohen 2008 channel catalog** (`src/cpp/src/neural/ChannelKinetics.cpp`) —
+  three new channels with parameters fetched from `openworm/CElegansNeuroML` NMODL files:
+  `KSLOW_BC` (k_slow, 1 activation gate n, constant τ=25.0 ms), `KFAST_BC` (k_fast,
+  activation p^4 + inactivation q, constant τ=2.26/150.0 ms), `LEAK_BC` (passive, E=−50 mV).
+- **`boyle2008` scenario** (`src/cpp/tools/neural_trace.cpp`) — 6th neural_trace scenario;
+  runs KSLOW_BC + KFAST_BC + LEAK_BC single-compartment neuron with current pulse; outputs
+  CSV columns `t,V,n,p,q`.
+- **Cross-validation cells in `notebooks/project_tour.ipynb`** (CV-1 + CV-2):
+  - CV-1: fetches k_slow.mod and k_fast.mod live from openworm/CElegansNeuroML, parses
+    NMODL parameters, runs C++ backward-Euler integrator (`neural_trace boyle2008`) and
+    scipy RK45 (same published ODE, same parameters) side-by-side; max |ΔV| = 0.17 mV —
+    consistent with first-order backward Euler at dt = 0.025 ms.
+  - CV-2: computes x_inf(V) analytically from the parsed NMODL Boltzmann formula and
+    compares to C++ `chan_kinetics` output for KSLOW_BC/KFAST_BC; max deviation ≤ 2×10⁻⁶
+    confirming floating-point round-trip fidelity between NMODL source and C++ catalog.
+
+---
+
+## [0.4.0] - 2026-06-15
 
 ### Added
 
