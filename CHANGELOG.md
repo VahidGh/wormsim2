@@ -12,7 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.5.0] - 2026-06-16 *(current)*
+## [0.5.1] - 2026-06-16 *(current)*
+
+### Added
+
+- **`muscle_trace` scenario** (`src/cpp/tools/neural_trace.cpp`) — 7th `neural_trace`
+  scenario; single-compartment body-wall muscle cell from `openworm/muscle_model`
+  NeuroML2 (`SingleCompMuscle.cell.nml`): KSLOW_BC (g=31.543 nS, E=−64.35 mV),
+  KFAST_BC (g=28.950 nS, E=−55.00 mV), CA_BOYLE (g=15.938 nS, E=+49.11 mV), LEAK_BC
+  (g=1.399 nS, E=+10 mV); C_m=72.38 pF (π×10 µm×230.35 µm×1 µF/cm²).
+  Protocol: 500 ms pre-settle at I_offset=−120 pA, then −120+I_pulse for 20 ms at t=5 ms;
+  outputs CSV `t,V,n,p,q,e,f`. Ca²⁺ pool approximated as h=1 (no CaPool).
+- **`notebooks/project_tour.ipynb`** — v0.5.1 section: build cell, demo plot (100/400/700 pA),
+  CV-5.4 (muscle_trace vs 20 digitized points from Boyle & Cohen 2008 Fig. 2A;
+  PASS: 100 pA max|ΔV|=4.5 mV, 400 pA Δpeak=12.5 mV, 700 pA AP occurs Δt_peak=0.6 ms),
+  CV-5.5 cumulative regression (8/8 PASS). System CV extended to SCV-4 (4/4 ALL PASS).
+
+---
+
+## [0.5.0] - 2026-06-16
 
 ### Added
 

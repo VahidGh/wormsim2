@@ -24,6 +24,15 @@
 
 ---
 
+## `docs/images/`
+
+| File | Description | Update triggers |
+|---|---|---|
+| `docs/images/v051_muscle_traces.png` | C++ muscle_trace demo output at 100/400/700 pA — extracted from `notebooks/project_tour.ipynb` v0.5.1 section | New `muscle_trace` run with changed parameters; notebook re-executed |
+| `docs/images/cv_5_4_muscle_trace.png` | CV-5.4 comparison plot: C++ traces vs Boyle & Cohen 2008 Fig. 2A digitized data — extracted from `notebooks/project_tour.ipynb` CV-5.4 cell | CV-5.4 cell re-run; new reference data; pass threshold change |
+
+---
+
 ## `data/`
 
 | File | Description | Update triggers |
@@ -99,7 +108,7 @@
 
 | File | Description | Update triggers |
 |---|---|---|
-| `neural_trace.cpp` | CLI data runner for notebook demonstrations — 6 scenarios (`nca_decay`, `kd_gate`, `gap_junc`, `multi_ch`, `boyle2008`, `chan_kinetics`); outputs CSV to stdout; called from `notebooks/project_tour.ipynb` via Docker | New scenario needed for notebook; new channel in catalog; new integrator feature to demonstrate |
+| `neural_trace.cpp` | CLI data runner for notebook demonstrations — 7 scenarios (`nca_decay`, `kd_gate`, `gap_junc`, `multi_ch`, `boyle2008`, `chan_kinetics`, `muscle_trace`); outputs CSV to stdout; called from `notebooks/project_tour.ipynb` via Docker | New scenario needed for notebook; new channel in catalog; new integrator feature to demonstrate |
 | `connectome_trace.cpp` | CLI tool: `connectome_trace <nml> <T_ms> <dt_ms> <neuron_names>` → CSV voltage traces (stdout) + load summary (stderr); loads the full connectome via `NetworkInputParser::load()` and runs `NeuralIntegrator` | New integrator feature; new CLI argument; notebook v0.5+ cell update needed |
 | `CMakeLists.txt` | Build targets `neural_trace`, `connectome_trace` (always built, not test-gated) | New tool executable added |
 

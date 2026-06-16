@@ -223,6 +223,91 @@ static int boyle2008(int argc, char** argv)
 }
 
 // ---------------------------------------------------------------------------
+// muscle_trace — single-compartment body-wall muscle (Boyle & Cohen 2008, Fig. 2A)
+//   Parameters from openworm/muscle_model NeuroML2/SingleCompMuscle.cell.nml
+//   Cylinder d=10 µm, L=230.3459 µm → area=7237.7 µm²=7.238e-5 cm², C_m=72.38 pF
+//   Protocol: constant I_offset=-120 pA (holds cell at V0=-75 mV) plus
+//             I_pulse pA for 20 ms starting at t=5 ms.
+//   CaPool not modelled: ca_boyle h gate treated as 1 (no [Ca²⁺]ᵢ dynamics).
+//   Input:  I_pulse_pA  [T_ms=45]  [dt_ms=0.025]
+//   Output: t,V,n,p,q,e,f
+// ---------------------------------------------------------------------------
+static int muscle_trace(int argc, char** argv)
+{
+    if (argc < 1) {
+        std::fputs("muscle_trace: I_pulse_pA [T_ms=45] [dt_ms=0.025]\n", stderr);
+        return 1;
+    }
+    const float I_pulse = std::atof(argv[0]);
+    const float T       = argc >= 2 ? std::atof(argv[1]) : 45.0f;
+    const float dt      = argc >= 3 ? std::atof(argv[2]) : 0.025f;
+
+    // Cell geometry from SingleCompMuscle.cell.nml: cylinder d=10µm, L=230.3459µm
+    // area = π × d × L = 7237.7 µm² = 7.2377e-5 cm²
+    constexpr float C_m       = 72.38f;    // pF = 1 µF/cm² × π×d×L = 1µF/cm² × 7.238e-5cm²
+    constexpr float V0        = -75.0f;    // mV (initMembPotential)
+
+    // Absolute conductances (nS) and reversal potentials (mV) from NML
+    constexpr float g_ks = 31.543f, E_ks = -64.3461f;   // k_slow
+    constexpr float g_kf = 28.950f, E_kf = -54.9998f;   // k_fast
+    constexpr float g_ca = 15.938f, E_ca =  49.11f;     // ca_boyle (h=1)
+    constexpr float g_L  =  1.399f, E_L  =  10.0f;      // Leak
+
+    NetworkConfig cfg;
+    cfg.source_format = "tool";
+    cfg.neurons.push_back(make_neuron(0, "M0", C_m, V0,
+        {{"KSLOW_BC", g_ks}, {"KFAST_BC", g_kf},
+         {"CA_BOYLE", g_ca}, {"LEAK_BC",  g_L }}));
+
+    // Override E_rev: muscle differs from neuron (e.g. E_Leak=+10 mV, not -50 mV)
+    auto ch = [](const char* id, float erev) {
+        ChannelDef d; d.id = id; d.e_rev_mV = erev; return d;
+    };
+    cfg.channels["KSLOW_BC"] = ch("KSLOW_BC", E_ks);
+    cfg.channels["KFAST_BC"] = ch("KFAST_BC", E_kf);
+    cfg.channels["CA_BOYLE"] = ch("CA_BOYLE", E_ca);
+    cfg.channels["LEAK_BC"]  = ch("LEAK_BC",  E_L);
+
+    NeuralIntegrator ni(cfg);
+
+    // Pre-settle: run 500 ms with I_offset only to let gates equilibrate at V0=-75 mV.
+    // Gate catalog initialises from ChannelSpec.initial (tuned for neurons at -65 mV);
+    // this step ensures steady-state values at the muscle resting potential.
+    constexpr float I_offset = -120.0f;
+    constexpr float settle_ms = 500.0f;
+    {
+        const std::vector<float> Iv_settle{I_offset};
+        const int settle_steps = static_cast<int>(settle_ms / dt);
+        for (int i = 0; i < settle_steps; ++i)
+            ni.step(dt, std::span{Iv_settle});
+    }
+
+    // Gate order: KSLOW_BC→n(0), KFAST_BC→p(1),q(2), CA_BOYLE→e(3),f(4)
+    std::printf("t,V,n,p,q,e,f\n");
+    {
+        const auto& s = ni.state();
+        std::printf("%.4f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n",
+                    0.0f, ni.voltages()[0],
+                    s.gate[0], s.gate[1], s.gate[2], s.gate[3], s.gate[4]);
+    }
+
+    // Stimulus protocol: I_offset=-120 pA always; pulse from t=5ms to t=25ms
+    constexpr float t_on = 5.0f, t_off = 25.0f;
+    const int steps = static_cast<int>(T / dt);
+    for (int i = 0; i < steps; ++i) {
+        const float t_now = (i + 1) * dt;
+        const float I_ext = I_offset + ((t_now > t_on && t_now <= t_off) ? I_pulse : 0.0f);
+        const std::vector<float> Iv{I_ext};
+        ni.step(dt, std::span{Iv});
+        const auto& s = ni.state();
+        std::printf("%.4f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n",
+                    t_now, ni.voltages()[0],
+                    s.gate[0], s.gate[1], s.gate[2], s.gate[3], s.gate[4]);
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
 // chan_kinetics — voltage sweep: x_inf(V) and tau_x(V) for each gate
 //   Input:  channel_id  V_min(mV)  V_max(mV)  n_points
 //   Output: V,gate_idx,x_inf,tau_ms
@@ -270,6 +355,7 @@ int main(int argc, char** argv)
             "  gap_junc     C_m g_gj V0_A V0_B T dt\n"
             "  multi_ch     C_m V0 T dt I_pulse t_on t_off\n"
             "  boyle2008    C_m g_kslow g_kfast g_leak V0 T dt I_pulse t_on t_off\n"
+            "  muscle_trace I_pulse_pA [T_ms=45] [dt_ms=0.025]\n"
             "  chan_kinetics channel_id V_min V_max n_points\n"
             "Units: mV · ms · pA · pF · nS\n",
             stderr);
@@ -285,6 +371,7 @@ int main(int argc, char** argv)
     if (scenario == "gap_junc")     return gap_junc(argc, argv);
     if (scenario == "multi_ch")     return multi_ch(argc, argv);
     if (scenario == "boyle2008")    return boyle2008(argc, argv);
+    if (scenario == "muscle_trace") return muscle_trace(argc, argv);
     if (scenario == "chan_kinetics") return chan_kinetics(argc, argv);
 
     std::fprintf(stderr, "Unknown scenario: %s\n", scenario.c_str());

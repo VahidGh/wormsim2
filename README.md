@@ -1,6 +1,6 @@
 # wormsim2
 
-[![Version](https://img.shields.io/badge/version-v0.5.0-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.5.1-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-C%2B%2B20-blue?style=flat-square)](src/cpp/)
 [![Backends](https://img.shields.io/badge/backends-CPU%20%7C%20CUDA%20%7C%20OpenCL-76b900?style=flat-square)](docs/research/00-motivation-objectives-related-work.md)
@@ -44,6 +44,31 @@ explorable without a native install.
 Engineering objectives (modern C++ core, CUDA acceleration, parallelism, V&V/CI, Python
 analysis layer), domain assumptions, and explicit non-goals are detailed in the
 [research charter](docs/research/00-motivation-objectives-related-work.md).
+
+---
+
+## Latest validated results (v0.5.1)
+
+Single-compartment body-wall muscle cell (Boyle & Cohen 2008) simulated with the
+wormsim2 C++ HH engine and cross-validated against 20 digitized reference points
+from Fig. 2A of the original paper (`openworm/muscle_model/BoyleCohen2008/data/`).
+
+**C++ output — 100 / 400 / 700 pA current pulses (20 ms, dt = 0.025 ms):**
+
+![v0.5.1 muscle traces](docs/images/v051_muscle_traces.png)
+
+**CV-5.4 — C++ vs Boyle & Cohen 2008 Fig. 2A (digitized reference):**
+
+![CV-5.4 muscle trace vs reference](docs/images/cv_5_4_muscle_trace.png)
+
+| Trace | C++ peak | Reference peak | max \|ΔV\| / Δpeak | Result |
+|-------|----------|----------------|---------------------|--------|
+| 100 pA (sub-threshold) | −52.5 mV | −56.0 mV | 4.5 mV | **PASS** (< 8 mV) |
+| 400 pA (partial AP)    | +12.0 mV  | +24.5 mV  | 12.5 mV | **PASS** (< 20 mV) |
+| 700 pA (full AP)       | +23.4 mV  | +31.5 mV  | Δt_peak = 0.6 ms | **PASS** (AP occurs) |
+
+Peak offset (~8–12 mV) is expected: Ca²⁺ pool dynamics approximated as h=1 (no CaPool) in v0.5.1.
+System CV: **4/4 ALL PASS** (engine accuracy · ca_boyle kinetics · connectome topology · muscle dynamics).
 
 ---
 
@@ -117,7 +142,7 @@ Track progress in [docs/ISSUES.md](docs/ISSUES.md) and [CHANGELOG.md](CHANGELOG.
 | CI pipeline (build/test/cppcheck/clang-tidy/coverage)                     | **Done**                  |
 | C++20 quality checker (72 static checks, 12 categories)                   | **Done**                  |
 | `src/cpp/neural/` — HH ODE integrator                                  | **Done** (2/2 tests pass) |
-| `src/cpp/tools/neural_trace` — CSV data runner (6 scenarios)           | **Done**                  |
+| `src/cpp/tools/neural_trace` — CSV data runner (7 scenarios, incl. `muscle_trace`) | **Done** |
 | `data/c302/c302_C2_Full.net.nml` — c302 C2 full connectome             | **Done**                  |
 | `src/cpp/tools/connectome_trace` — full-connectome trace tool          | **Done** (5/5 tests pass) |
 | `notebooks/project_tour.ipynb` — C++ output demos + Boyle-Cohen CV + v0.5 | **Done**              |
