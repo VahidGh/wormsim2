@@ -117,8 +117,8 @@ Track progress in [docs/ISSUES.md](docs/ISSUES.md) and [CHANGELOG.md](CHANGELOG.
 | CI pipeline (build/test/cppcheck/clang-tidy/coverage)                     | **Done**                  |
 | C++20 quality checker (72 static checks, 12 categories)                   | **Done**                  |
 | `src/cpp/neural/` — HH ODE integrator                                  | **Done** (2/2 tests pass) |
-| `src/cpp/tools/neural_trace` — CSV data runner (5 scenarios)           | **Done**                  |
-| `notebooks/project_tour.ipynb` — C++ output demos (Scenarios 1–5)      | **Done**                  |
+| `src/cpp/tools/neural_trace` — CSV data runner (6 scenarios)           | **Done**                  |
+| `notebooks/project_tour.ipynb` — C++ output demos + Boyle-Cohen CV     | **Done**                  |
 | FEM body (`FEMBody`)                                                    | Planned                         |
 | Compute backends (OpenCL / CUDA)                                          | Planned                         |
 | Python validation layer                                                   | Planned                         |

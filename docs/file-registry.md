@@ -83,7 +83,7 @@
 
 | File | Description | Update triggers |
 |---|---|---|
-| `ChannelKinetics.cpp` | Built-in c302 channel catalog (NCA/KD/KA/KQS/KVS/IR) | New c302 channel added; parameter re-fit from experimental data; new channel form |
+| `ChannelKinetics.cpp` | Built-in c302 channel catalog (NCA/KD/KA/KQS/KVS/IR + KSLOW_BC/KFAST_BC/LEAK_BC from Boyle & Cohen 2008 NMODL) | New c302 channel added; parameter re-fit from experimental data; new channel form |
 | `NeuralState.cpp` | `NeuralState::allocate` implementation | State layout change |
 | `NeuralIntegrator.cpp` | `build_layout`, `update_gates`, `update_synapses`, `update_voltages`, `gate_product` | Numerical scheme change; new current type; gap-junction algorithm change |
 
@@ -91,7 +91,7 @@
 
 | File | Description | Update triggers |
 |---|---|---|
-| `neural_trace.cpp` | CLI data runner for notebook demonstrations — 5 scenarios (`nca_decay`, `kd_gate`, `gap_junc`, `multi_ch`, `chan_kinetics`); outputs CSV to stdout; called from `notebooks/project_tour.ipynb` via Docker | New scenario needed for notebook; new channel in catalog; new integrator feature to demonstrate |
+| `neural_trace.cpp` | CLI data runner for notebook demonstrations — 6 scenarios (`nca_decay`, `kd_gate`, `gap_junc`, `multi_ch`, `boyle2008`, `chan_kinetics`); outputs CSV to stdout; called from `notebooks/project_tour.ipynb` via Docker | New scenario needed for notebook; new channel in catalog; new integrator feature to demonstrate |
 | `CMakeLists.txt` | Build target `neural_trace` (always built, not test-gated) | New tool executable added |
 
 ---

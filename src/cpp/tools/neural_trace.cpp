@@ -167,6 +167,62 @@ static int multi_ch(int argc, char** argv)
 }
 
 // ---------------------------------------------------------------------------
+// boyle2008 — single-compartment neuron with k_slow_bc + k_fast_bc + leak_bc
+//   Parameters from openworm/CElegansNeuroML k_slow.mod / k_fast.mod (Boyle 2008)
+//   Input:  C_m(pF)  g_kslow(nS)  g_kfast(nS)  g_leak(nS)  V0(mV)
+//           T(ms)  dt(ms)  I_pulse(pA)  t_on(ms)  t_off(ms)
+//   Output: t,V,n,p,q   (n=k_slow gate; p,q=k_fast gates)
+// ---------------------------------------------------------------------------
+static int boyle2008(int argc, char** argv)
+{
+    if (argc < 10) {
+        std::fputs("boyle2008: C_m g_kslow g_kfast g_leak V0 T dt I_pulse t_on t_off\n",
+                   stderr);
+        return 1;
+    }
+    const float C_m     = std::atof(argv[0]);
+    const float g_kslow = std::atof(argv[1]);
+    const float g_kfast = std::atof(argv[2]);
+    const float g_leak  = std::atof(argv[3]);
+    const float V0      = std::atof(argv[4]);
+    const float T       = std::atof(argv[5]);
+    const float dt      = std::atof(argv[6]);
+    const float I_pulse = std::atof(argv[7]);
+    const float t_on    = std::atof(argv[8]);
+    const float t_off   = std::atof(argv[9]);
+
+    NetworkConfig cfg;
+    cfg.source_format = "tool";
+    cfg.neurons.push_back(make_neuron(0, "N0", C_m, V0,
+        {{"KSLOW_BC", g_kslow},
+         {"KFAST_BC", g_kfast},
+         {"LEAK_BC",  g_leak}}));
+    NeuralIntegrator ni(cfg);
+
+    const std::vector<float> zero_i{0.0f};
+    const std::vector<float> pulse_i{I_pulse};
+
+    // Gate layout: KSLOW_BC has 1 gate (index 0 = n),
+    //              KFAST_BC has 2 gates (index 1 = p, index 2 = q)
+    std::printf("t,V,n,p,q\n");
+    std::printf("%.6f,%.6f,%.6f,%.6f,%.6f\n",
+                0.0f, V0,
+                ni.state().gate[0], ni.state().gate[1], ni.state().gate[2]);
+
+    const int steps = static_cast<int>(T / dt);
+    for (int i = 0; i < steps; ++i) {
+        const float t_now = (i + 1) * dt;
+        const bool  pulse = (t_now >= t_on && t_now < t_off);
+        ni.step(dt, pulse ? std::span{pulse_i} : std::span{zero_i});
+        const auto& s = ni.state();
+        std::printf("%.6f,%.6f,%.6f,%.6f,%.6f\n",
+                    t_now, ni.voltages()[0],
+                    s.gate[0], s.gate[1], s.gate[2]);
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
 // chan_kinetics — voltage sweep: x_inf(V) and tau_x(V) for each gate
 //   Input:  channel_id  V_min(mV)  V_max(mV)  n_points
 //   Output: V,gate_idx,x_inf,tau_ms
@@ -213,6 +269,7 @@ int main(int argc, char** argv)
             "  kd_gate      C_m V0 T dt\n"
             "  gap_junc     C_m g_gj V0_A V0_B T dt\n"
             "  multi_ch     C_m V0 T dt I_pulse t_on t_off\n"
+            "  boyle2008    C_m g_kslow g_kfast g_leak V0 T dt I_pulse t_on t_off\n"
             "  chan_kinetics channel_id V_min V_max n_points\n"
             "Units: mV · ms · pA · pF · nS\n",
             stderr);
@@ -227,6 +284,7 @@ int main(int argc, char** argv)
     if (scenario == "kd_gate")      return kd_gate(argc, argv);
     if (scenario == "gap_junc")     return gap_junc(argc, argv);
     if (scenario == "multi_ch")     return multi_ch(argc, argv);
+    if (scenario == "boyle2008")    return boyle2008(argc, argv);
     if (scenario == "chan_kinetics") return chan_kinetics(argc, argv);
 
     std::fprintf(stderr, "Unknown scenario: %s\n", scenario.c_str());

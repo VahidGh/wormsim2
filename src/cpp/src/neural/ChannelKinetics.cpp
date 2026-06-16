@@ -70,17 +70,62 @@ const ChannelSpec kIR{
     }}
 };
 
+// ---------------------------------------------------------------------------
+// Boyle & Cohen 2008 channels — parameters from NEURON .mod files published
+// in openworm/CElegansNeuroML (pythonScripts/c302/neuron_interaction/).
+// x_inf uses the same Boltzmann form; tau is constant (tau_a = 0).
+// ---------------------------------------------------------------------------
+
+// k_slow_bc — slow-inactivating K⁺ (Boyle-Cohen 2008); 1 activation gate n
+const ChannelSpec kKSlowBC{
+    .g_bar    = 1.0f,
+    .e_rev_mV = -60.0f,
+    .gates    = { GateKinetics{
+        .v_half  = 19.8741f,   .k      = 15.8512f,
+        .tau_0   = 25.0007f,   .tau_a  = 0.0f, .tau_v = 0.0f, .tau_w = 1.0f,
+        .initial = 0.012f,     .power  = 1
+    }}
+};
+
+// k_fast_bc — fast transient K⁺ (Boyle-Cohen 2008); activation p^4, inactivation q^1
+const ChannelSpec kKFastBC{
+    .g_bar    = 0.5f,
+    .e_rev_mV = -60.0f,
+    .gates    = {
+        GateKinetics{                               // gate p (activation)
+            .v_half = -8.0523205f, .k      = 7.42636f,
+            .tau_0  = 2.25518f,    .tau_a  = 0.0f, .tau_v = 0.0f, .tau_w = 1.0f,
+            .initial = 0.004f,     .power  = 4
+        },
+        GateKinetics{                               // gate q (inactivation, k<0)
+            .v_half = -15.645601f, .k      = -9.97468f,
+            .tau_0  = 149.96301f,  .tau_a  = 0.0f, .tau_v = 0.0f, .tau_w = 1.0f,
+            .initial = 0.97f,      .power  = 1
+        }
+    }
+};
+
+// leak_bc — passive leak used in Boyle-Cohen / c302-D models
+const ChannelSpec kLeakBC{
+    .g_bar    = 0.1f,
+    .e_rev_mV = -50.0f,
+    .gates    = {}   // pure ohmic
+};
+
 const ChannelSpec kUnknown{};
 
 } // anonymous namespace
 
 const ChannelSpec& channel_spec(std::string_view id) noexcept {
-    if (id == "NCA") return kNCA;
-    if (id == "KD")  return kKD;
-    if (id == "KA")  return kKA;
-    if (id == "KQS") return kKQS;
-    if (id == "KVS") return kKVS;
-    if (id == "IR")  return kIR;
+    if (id == "NCA")     return kNCA;
+    if (id == "KD")      return kKD;
+    if (id == "KA")      return kKA;
+    if (id == "KQS")     return kKQS;
+    if (id == "KVS")     return kKVS;
+    if (id == "IR")      return kIR;
+    if (id == "KSLOW_BC") return kKSlowBC;
+    if (id == "KFAST_BC") return kKFastBC;
+    if (id == "LEAK_BC")  return kLeakBC;
     return kUnknown;
 }
 
