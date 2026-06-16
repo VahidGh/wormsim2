@@ -53,19 +53,15 @@ Single-compartment body-wall muscle cell (Boyle & Cohen 2008) simulated with the
 wormsim2 C++ HH engine and cross-validated against 20 digitized reference points
 from Fig. 2A of the original paper (`openworm/muscle_model/BoyleCohen2008/data/`).
 
-**C++ output — 100 / 400 / 700 pA current pulses (20 ms, dt = 0.025 ms):**
-
-![v0.5.1 muscle traces](docs/images/v051_muscle_traces.png)
-
-**CV-5.4 — C++ vs Boyle & Cohen 2008 Fig. 2A (digitized reference):**
+**CV-5.4 — Wormsim2 vs Boyle & Cohen 2008 Fig. 2A (digitized reference):**
 
 ![CV-5.4 muscle trace vs reference](docs/images/cv_5_4_muscle_trace.png)
 
-| Trace | C++ peak | Reference peak | max \|ΔV\| / Δpeak | Result |
-|-------|----------|----------------|---------------------|--------|
-| 100 pA (sub-threshold) | −52.5 mV | −56.0 mV | 4.5 mV | **PASS** (< 8 mV) |
-| 400 pA (partial AP)    | +12.0 mV  | +24.5 mV  | 12.5 mV | **PASS** (< 20 mV) |
-| 700 pA (full AP)       | +23.4 mV  | +31.5 mV  | Δt_peak = 0.6 ms | **PASS** (AP occurs) |
+| Trace                  | Wormsim2 peak | Reference peak | max\|ΔV\| / Δpeak | Result                     |
+| ---------------------- | ------------- | -------------- | ------------------- | -------------------------- |
+| 100 pA (sub-threshold) | −52.5 mV     | −56.0 mV      | 4.5 mV              | **PASS** (< 8 mV)    |
+| 400 pA (partial AP)    | +12.0 mV      | +24.5 mV       | 12.5 mV             | **PASS** (< 20 mV)   |
+| 700 pA (full AP)       | +23.4 mV      | +31.5 mV       | Δt_peak = 0.6 ms   | **PASS** (AP occurs) |
 
 Peak offset (~8–12 mV) is expected: Ca²⁺ pool dynamics approximated as h=1 (no CaPool) in v0.5.1.
 System CV: **4/4 ALL PASS** (engine accuracy · ca_boyle kinetics · connectome topology · muscle dynamics).
@@ -133,23 +129,23 @@ wormsim2/
 
 Track progress in [docs/ISSUES.md](docs/ISSUES.md) and [CHANGELOG.md](CHANGELOG.md).
 
-| Component                                                                 | Status                          |
-| ------------------------------------------------------------------------- | ------------------------------- |
-| [Scientific charter](docs/research/00-motivation-objectives-related-work.md) | Draft                           |
-| [Requirements analysis](docs/requirements/01-requirements-analysis.md)       | Draft                           |
-| [Architecture design](docs/design/02-architecture-design.md)                 | Draft                           |
-| `src/cpp/io/` — dual-format network loader                             | **Done** (2/2 tests pass) |
-| CI pipeline (build/test/cppcheck/clang-tidy/coverage)                     | **Done**                  |
-| C++20 quality checker (72 static checks, 12 categories)                   | **Done**                  |
-| `src/cpp/neural/` — HH ODE integrator                                  | **Done** (2/2 tests pass) |
-| `src/cpp/tools/neural_trace` — CSV data runner (7 scenarios, incl. `muscle_trace`) | **Done** |
-| `data/c302/c302_C2_Full.net.nml` — c302 C2 full connectome             | **Done**                  |
-| `src/cpp/tools/connectome_trace` — full-connectome trace tool          | **Done** (5/5 tests pass) |
-| `notebooks/project_tour.ipynb` — C++ output demos + Boyle-Cohen CV + v0.5 | **Done**              |
-| FEM body (`FEMBody`)                                                    | Planned                         |
-| Compute backends (OpenCL / CUDA)                                          | Planned                         |
-| Python validation layer                                                   | Planned                         |
-| Browser 3D viewer                                                         | Planned                         |
+| Component                                                                               | Status                          |
+| --------------------------------------------------------------------------------------- | ------------------------------- |
+| [Scientific charter](docs/research/00-motivation-objectives-related-work.md)               | Draft                           |
+| [Requirements analysis](docs/requirements/01-requirements-analysis.md)                     | Draft                           |
+| [Architecture design](docs/design/02-architecture-design.md)                               | Draft                           |
+| `src/cpp/io/` — dual-format network loader                                           | **Done** (2/2 tests pass) |
+| CI pipeline (build/test/cppcheck/clang-tidy/coverage)                                   | **Done**                  |
+| C++20 quality checker (72 static checks, 12 categories)                                 | **Done**                  |
+| `src/cpp/neural/` — HH ODE integrator                                                | **Done** (2/2 tests pass) |
+| `src/cpp/tools/neural_trace` — CSV data runner (7 scenarios, incl. `muscle_trace`) | **Done**                  |
+| `data/c302/c302_C2_Full.net.nml` — c302 C2 full connectome                           | **Done**                  |
+| `src/cpp/tools/connectome_trace` — full-connectome trace tool                        | **Done** (5/5 tests pass) |
+| `notebooks/project_tour.ipynb` — C++ output demos + Boyle-Cohen CV + v0.5            | **Done**                  |
+| FEM body (`FEMBody`)                                                                  | Planned                         |
+| Compute backends (OpenCL / CUDA)                                                        | Planned                         |
+| Python validation layer                                                                 | Planned                         |
+| Browser 3D viewer                                                                       | Planned                         |
 
 ---
 
