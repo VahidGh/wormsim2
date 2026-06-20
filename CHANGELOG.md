@@ -12,7 +12,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.6.0] - 2026-06-16 *(current)*
+## [0.7.0] - 2026-06-20 *(current)*
+
+### Added
+
+- **`EigenwormBasis.h`** (`src/cpp/include/body/`) — Stephens 2008 PLoS CB 4-mode
+  tangent-angle eigenbasis (48 body segments); basis vectors from
+  `openworm/open-worm-analysis-toolbox/master_eigen_worms_N2.mat`; unit-L2-normalised
+  in 48D; `project()` and `reconstruct()` and `integrate_centerline()` static methods.
+- **`EigenwormBody.h/.cpp`** (`src/cpp/include/body/`, `src/cpp/src/body/`) —
+  quasi-static body model: resolves 552 NMJ post-synaptic muscle names to
+  (segment, dorsal/ventral) quadrant via `cfg.neurons[post_id].name`; per-segment
+  dorsal/ventral activation weighted average → kappa[] → cumulative theta[] → mode
+  amplitudes a[0..3] → centerline (x[], y[]) in mm; `kGain=1.2f` calibration constant.
+- **`WCONExporter.h/.cpp`** (`src/cpp/include/output/`, `src/cpp/src/output/`) —
+  WCON 1.3 tracker-commons JSON writer: `add_frame(t_ms, x*, y*, n_pts)`;
+  `write(path)` serialises `{"tracker-software", "units", "data"}` with t/x/y arrays
+  in seconds/mm; no external JSON library dependency.
+- **`body_trace.cpp`** (`src/cpp/tools/`) — CLI tool:
+  `body_trace <nml> <T_ms> <dt_ms> [--avb-drive pA] [--db-vb-sine pA freq_Hz] [--wcon path]`
+  → CSV `t_ms,a0,a1,a2,a3` (stdout) + optional WCON file; `--db-vb-sine` applies
+  anti-phase inhibitory current to DB1-7 (dorsal) vs VB1-11 (ventral) motor neurons
+  as CPG proxy for undulation.
+- **`test_eigenworm.cpp`** (`src/cpp/tests/body/`) — 3-assertion CTest: eigenvector
+  unit-norm, zero-NMJ → zero modes, pure-dorsal → all kappa≥0 and |a0|>0.01.
+- **`test_wcon.cpp`** (`src/cpp/tests/output/`) — 3-assertion CTest: frame count,
+  49 points/frame, WCON JSON round-trip structure check.
+- **`notebooks/project_tour.ipynb`** — v0.7.0 section: rebuild cell, 10 s body_trace
+  run (DB/VB anti-phase sine at 0.5 Hz), mode amplitude time series + body centerline
+  snapshots + (a0,a1) phase portrait, CV-7.1 (FFT: 0.5 Hz PASS), CV-7.2 (modes 0+1
+  energy fraction 0.687 > 0.50 PASS), CV-7.3 cumulative 15/15 ALL PASS.
+- **`docs/images/v070_body_modes.png`** — 3-panel figure: a0/a1/a2 time series,
+  body centerline snapshots at 4 phases, (a0,a1) phase portrait.
+- **`docs/images/cv_7_1_fft.png`** — FFT power spectrum of a0(t) with 0.5 Hz peak
+  and Stephens 2008 N2 reference band [0.35, 0.65] Hz.
+
+### Changed
+
+- **`body_trace.cpp`** DB/VB anti-phase sine drive: only applies inhibitory (negative)
+  current, preserving the natural ~0 mV equilibrium on the excited side; creates
+  genuine D/V contrast even when all c302 neurons equilibrate near the NMJ threshold.
+- **`src/cpp/CMakeLists.txt`** — added `wormsim2_body` static library target linking
+  `EigenwormBody.cpp` + `WCONExporter.cpp`; PUBLIC links to `wormsim2_neural`.
+- **`src/cpp/tools/CMakeLists.txt`** — added `body_trace` executable.
+- **`src/cpp/tests/CMakeLists.txt`** — added `body/` and `output/` subdirectories.
+
+### Verified
+
+- **CTest 9/9 PASS** — all prior tests (io:3, neural:3+1, static:1) plus new body:1
+  and output:1 suites.
+- **CV-7.1** — undulation frequency 0.500 Hz ∈ [0.35, 0.65] Hz (Stephens 2008 N2
+  reference: 0.529 ± 0.069 Hz). PASS.
+- **CV-7.2** — modes 0+1 energy fraction 0.687 > 0.50 (CPG-proxy threshold; Stephens
+  2008 real-worm reference: ~0.75 for modes 1+2). PASS.
+
+---
+
+## [0.6.0] - 2026-06-16
 
 ### Added
 

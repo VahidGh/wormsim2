@@ -1,3 +1,5 @@
 add_subdirectory(io)
 add_subdirectory(neural)
+add_subdirectory(body)
+add_subdirectory(output)
 add_subdirectory(static)

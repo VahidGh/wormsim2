@@ -28,6 +28,17 @@ target_link_libraries(wormsim2_neural PUBLIC wormsim2_io)
 target_compile_features(wormsim2_neural PUBLIC cxx_std_20)
 
 # ---------------------------------------------------------------------------
+# body — eigenworm reduced-order body + WCON output
+# ---------------------------------------------------------------------------
+add_library(wormsim2_body STATIC
+    src/body/EigenwormBody.cpp
+    src/output/WCONExporter.cpp
+)
+target_include_directories(wormsim2_body PUBLIC include)
+target_link_libraries(wormsim2_body PUBLIC wormsim2_neural)
+target_compile_features(wormsim2_body PUBLIC cxx_std_20)
+
+# ---------------------------------------------------------------------------
 # Tools (notebook data runners — always built)
 # ---------------------------------------------------------------------------
 add_subdirectory(tools)

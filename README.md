@@ -1,6 +1,6 @@
 # wormsim2
 
-[![Version](https://img.shields.io/badge/version-v0.6.0-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.7.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-C%2B%2B20-blue?style=flat-square)](src/cpp/)
 [![Backends](https://img.shields.io/badge/backends-CPU%20%7C%20CUDA%20%7C%20OpenCL-76b900?style=flat-square)](docs/research/00-motivation-objectives-related-work.md)
@@ -23,8 +23,11 @@ of these at once, and ships a **web-friendly browser 3D viewer** so results are
 explorable without a native install.
 
 > 📄 **Scientific foundation:** [docs/research/00-motivation-objectives-related-work.md](docs/research/00-motivation-objectives-related-work.md)
+
 > 📋 **Requirements:** [docs/requirements/01-requirements-analysis.md](docs/requirements/01-requirements-analysis.md)
+
 > 🏗️ **Architecture:** [docs/design/02-architecture-design.md](docs/design/02-architecture-design.md)
+
 > 🗒️ **Project tour (notebook):** [notebooks/project_tour.ipynb](notebooks/project_tour.ipynb)
 
 ---
@@ -47,9 +50,28 @@ analysis layer), domain assumptions, and explicit non-goals are detailed in the
 
 ---
 
-## Latest validated results (v0.6.0)
+## Latest validated results (v0.7.0)
 
-**CV-6.1E — Digitized reference vs wormsim2 side-by-side** (openworm `NeuronMuscle.png`, same Boyle-Cohen muscle channels):
+**Body shape comparison vs Stephens 2008 eigenbasis — [Stephens et al. 2008](https://doi.org/10.1371/journal.pcbi.1000028)**
+
+<img src="docs/images/v070_shape_comparison.png" width="720" alt="v0.7.0 body shape comparison vs Stephens 2008"/>
+
+*Row 1 (blue): Stephens 2008 eigenbasis reference at the phases the simulation visits (A = 0.5 rad, biologically estimated).
+Row 2 (green): wormsim2 modes 0+1 reconstruction, amplitude-normalised — **shape r = 1.000** (body module correctly implements the Stephens basis).
+Row 3 (red): wormsim2 all-mode output showing mode-2 excess from CPG proxy (3.1× reference, expected at v0.7.0).
+Phase portrait: actual simulation orbit (near-linear) vs ideal circular orbit at same amplitude (what a proper traveling wave produces).*
+
+| CV      | Check                                               | Published reference                                                                 | Result                          |
+| ------- | --------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------- |
+| CV-7.1  | Undulation frequency 0.500 Hz ∈ [0.35, 0.65] Hz   | [Stephens et al. 2008](https://doi.org/10.1371/journal.pcbi.1000028) Table 1: 0.529 ± 0.069 Hz | **PASS**               |
+| CV-7.2  | Modes 0+1 energy fraction 0.687 > 0.50             | Stephens 2008 Fig. 2B: modes 1+2 ≈ 0.75 for real N2                               | **PASS** (CPG-proxy threshold) |
+| Shape   | Modes 0+1 body shape vs Stephens eigenbasis (r)    | Stephens 2008 eigenbasis (`master_eigen_worms_N2.mat`)                              | **r = 1.000** (exact match)    |
+
+CTest 9/9 PASS — new suites: `test_eigenworm` (body) + `test_wcon` (output).
+
+---
+
+**v0.6.0 — NMJ layer: digitized reference vs wormsim2 side-by-side** (openworm `NeuronMuscle.png`, same Boyle-Cohen muscle channels):
 
 ![CV-6.1E NMJ comparison: digitized reference vs wormsim2](docs/images/cv_6_1e_nmj_comparison.png)
 

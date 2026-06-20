@@ -3,3 +3,6 @@ target_link_libraries(neural_trace PRIVATE wormsim2_neural)
 
 add_executable(connectome_trace connectome_trace.cpp)
 target_link_libraries(connectome_trace PRIVATE wormsim2_neural)
+
+add_executable(body_trace body_trace.cpp)
+target_link_libraries(body_trace PRIVATE wormsim2_body)
