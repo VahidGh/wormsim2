@@ -12,7 +12,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.7.0] - 2026-06-20 *(current)*
+## [0.8.0] - 2026-06-22 *(current)*
+
+### Added
+- `src/cpp/include/body/FEMBodyMesh.h/.cpp` — tapered-cylinder tet mesh (~213v/~432t for dev, goal ~984v/~3341t), deal.II 9.5.1 `FE_SimplexP<3>(1)`; 9-plane hex mesh (n\_axial=8), taper to 50% radius at head/tail
+- `src/cpp/include/body/CorotatedElastic.h/.cpp` — per-tet corotated linear-elastic constitutive law (polar decomp F=R·S via Newton-Schulz, P-K1 stress; E=100 Pa, ν=0.3); `dealii::invert(Dm)` for correct Dm⁻¹ (not Dm⁻ᵀ)
+- `src/cpp/include/body/MuscleMap.h/.cpp` — 95 BWM → surface tet region mapping (4 quadrants × 24 segments); active stress P_active = a·T_max·e_x⊗e_x
+- `src/cpp/include/body/FEMBody.h/.cpp` — backward-Euler overdamped implicit FEM solver: (K_elastic + K_drag)·u_new = K_drag·u_old + f_muscle; tail-clamp penalty BCs (x > 0.95·L, 1e20 penalty); 9-plane centerline with linear interpolation to 24 segments
+- `src/cpp/include/body/CurvatureSensor.h/.cpp` — κ(s) from deformed FEM centerline → proprioceptive input
+- `src/cpp/tests/body/test_fem_body.cpp` — **CV-8.1** dorsal C-bend tangent-angle correlation vs linear ref r=0.93≥0.80; **CV-8.2** oscillation freq 0.5 Hz ∈ [0.35, 0.65]; **CV-8.3** orbit circularity 0.64 > 0.5
+- `src/cpp/tests/body/CMakeLists.txt` updated — `test_fem_body` target guarded by `WORMSIM2_HAS_DEALII`; MK Docker `LD_LIBRARY_PATH` injected via CTest ENVIRONMENT
+- `src/cpp/tools/fem_body_trace.cpp` — open-loop CLI tool: direct sinusoidal anti-phase D/V muscle activation → FEM body → centerline CSV at 50 Hz (`t_ms,x0,y0,...,x24,y24`); flags `--freq --T_s --dt_ms --amp`; guarded by `WORMSIM2_HAS_DEALII` in `tools/CMakeLists.txt`
+- `docs/images/v080_fem_vs_eigenworm.gif` — 5-panel animated comparison: v0.7 EigenwormBody vs v0.8 FEM Body at 0.5 Hz drive; shows orbit circularity improvement (0.55 → 0.72)
+
+### Fixed
+- **Dm⁻¹ transpose bug**: `CorotatedElasticElement::init()` computed Dm⁻ᵀ instead of Dm⁻¹, producing spurious elastic forces ~780× larger than muscle forces at rest; replaced with `dealii::invert(Dm)`
+- **RHS double-count**: step() subtracted `f_elastic(u_old)` from RHS while K_elastic already handles elastic restoring implicitly (backward Euler); removing the forward-Euler `f_elastic` term eliminates the instability that caused element inversion after 1 step
+- **Rigid body drift**: 13 tail vertices (x > 0.95·L) clamped with penalty 1e20; correctly pins all 6 rigid-body modes including z-rotation (prior 5-DOF approach used wrong DOF directions)
+- **Centerline zigzag**: bin assignment `round(s·24)` left 16 of 25 cross-sections empty (only 9 hex planes exist); switched to 9-plane grouping + linear interpolation to 24 output segments; eliminates ±1.5 rad alternating tangent artifacts
+
+- Resolves ISSUE-002 (body discretisation), advances ISSUE-004 (proprioceptive coupling)
+
+---
+
+## [0.7.0] - 2026-06-20
 
 ### Added
 

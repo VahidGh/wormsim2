@@ -17,7 +17,6 @@ from commits, code comments, and the requirements/design docs.
 
 | ID | Type | Pri | Title | Notes / context |
 |---|---|---|---|---|
-| ISSUE-002 | research | P1 | Body discretisation choice | Tetrahedral mesh (MetaWorm-style), prior hex/Cosserat representation, or a new reduced-order eigenworm body? Drives the FEM module design. (synthesis §7.1) |
 | ISSUE-003 | research | P1 | Neural model granularity | Single-compartment vs multi-compartment Hodgkin–Huxley per neuron — accuracy vs GPU cost trade-off. (synthesis §7.2) |
 | ISSUE-004 | research | P0 | Proprioceptive coupling design | Which stretch-receptor neurons/channels, and what feedback gain/topology close the sensorimotor loop. This is the project's core contribution (G3). (synthesis §7.4) |
 | ISSUE-005 | decision | P1 | Web output schema + viewer stack | Serialization format (JSON vs binary threshold for large runs) and browser rendering stack (Canvas2D vs WebGL/Three.js) for the 3D viewer (G7). (synthesis §7.6) |
@@ -36,3 +35,4 @@ from commits, code comments, and the requirements/design docs.
 | ID | Type | Title | Resolution | Date |
 |---|---|---|---|---|
 | ISSUE-001 | decision | GPU compute backend | **Backend-agnostic core; OpenCL mandatory.** Three backends: **CPU/OpenMP** (portable reference — CI and correctness), **OpenCL** (mandatory GPU dev path — Intel Iris Plus 645 iGPU via macOS OpenCL.framework; also Linux iGPU/dGPU), **CUDA** (NVIDIA real-time/deploy target — RTX / HPC clusters). OpenCL is mandatory, not optional: it is the only GPU execution path available on the developer machine. Inside Docker on macOS, OpenCL headers compile but actual GPU dispatch requires running natively (macOS OpenCL.framework) or on a Linux host with GPU passthrough. Rationale: dev machine has no NVIDIA; CPU reference ensures correctness; OpenCL enables GPU validation on the dev iGPU. Supersedes the earlier optional-OpenCL decision. | 2026-06-15 |
+| ISSUE-002 | decision | Body discretisation choice | **Corotated linear-elastic FEM on a tapered-cylinder tetrahedral mesh matching MetaWorm's body parameterisation.** deal.II 9.5.1 `FE_SimplexP<3>(1)` (P1 linear tets). Mesh generated via `GridGenerator::cylinder()` → `GridTools::convert_hypercube_to_simplex_mesh()` → targeted refinement to ≈984 vertices / ≈3,341 tetrahedra (MetaWorm-scale). Four muscle quadrants (D/V/L/R) × 24 longitudinal segments → 95 BWM activation constraints. Proprioceptive curvature feedback also lives in this layer. Prior wormuse hex/Cosserat approach not reused. | 2026-06-22 |

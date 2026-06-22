@@ -1,6 +1,6 @@
 # wormsim2
 
-[![Version](https://img.shields.io/badge/version-v0.7.0-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.8.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-C%2B%2B20-blue?style=flat-square)](src/cpp/)
 [![Backends](https://img.shields.io/badge/backends-CPU%20%7C%20CUDA%20%7C%20OpenCL-76b900?style=flat-square)](docs/research/00-motivation-objectives-related-work.md)
@@ -50,7 +50,36 @@ analysis layer), domain assumptions, and explicit non-goals are detailed in the
 
 ---
 
-## Latest validated results (v0.7.0)
+## Latest validated results (v0.8.0)
+
+**Corotated FEM body: CV-8.x suite (deal.II 9.5.1, UMFPACK, overdamped implicit Euler)**
+
+| CV      | Check                                                           | Published reference                                                                    | Result                         |
+| ------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------ |
+| CV-8.1  | Dorsal C-bend tangent-angle correlation vs linear ref ≥ 0.80   | Dorsal activation → monotone κ(s) → linear θ(s); uniform dorsal → C-bend not S-wave   | **r = 0.93 PASS**              |
+| CV-8.2  | Mid-body oscillation frequency ∈ [0.35, 0.65] Hz               | [Stephens et al. 2008](https://doi.org/10.1371/journal.pcbi.1000028) Table 1: 0.529 ± 0.069 Hz | **0.50 Hz PASS**    |
+| CV-8.3  | Orbit circularity max\|a1\|/max\|a0\| > 0.5                   | Traveling-wave criterion: a0/a1 phase orbit should be circular, not degenerate          | **0.64 PASS**                  |
+
+CTest 10/10 PASS — new suite: `test_fem_body` (label: `body;fem`, deal.II guard).
+
+**v0.7 vs v0.8 comparison — 0.5 Hz sinusoidal D/V drive (orbit circularity improvement):**
+
+<img src="docs/images/v080_fem_vs_eigenworm.gif" width="800" alt="v0.8 FEM body vs v0.7 EigenwormBody orbit comparison"/>
+
+*Top-left: body shapes normalised to each model's own peak amplitude (v0.7 = eigenworm integration, v0.8 = de-trended FEM centerline).
+Top-centre / Top-right: (a₀, a₁) phase orbits on each model's own scale — v0.7 ellipse is nearly linear (circ = 0.55), v0.8 is more circular (circ = 0.72), satisfying the CV-8.3 traveling-wave criterion.
+Bottom: tangent-angle profile θ(s) over time for each model.
+Note: amplitude scales differ — v0.7 circuit-driven peak a₀ = 0.076 rad (500 pA motoneuron input), v0.8 direct-activation peak a₀ = 0.019 rad (50% kTmax muscle stress). Comparison is on orbit **shape**, not amplitude.*
+
+**Key fixes in v0.8.0** (all required to reach passing CVs):
+- Dm⁻¹ transpose bug in `CorotatedElastic::init()` (computed Dm⁻ᵀ, not Dm⁻¹; forces were 780× too large)
+- Backward-Euler RHS double-count: removed forward-Euler `f_elastic(u_old)` term (caused element inversion after 1 step)
+- Rigid-body drift: 5-DOF tail pin could not suppress z-rotation; replaced with full tail-segment clamp (13 vertices, 39 DOFs, penalty 1e20)
+- Centerline zigzag: direct 1/24-bin assignment left 16 of 25 slots empty (only 9 hex planes exist); fixed with 9-plane grouping + linear interpolation
+
+---
+
+## v0.7.0 validated results
 
 **Body shape comparison vs Stephens 2008 eigenbasis — [Stephens et al. 2008](https://doi.org/10.1371/journal.pcbi.1000028)**
 
@@ -181,7 +210,7 @@ Track progress in [docs/ISSUES.md](docs/ISSUES.md) and [CHANGELOG.md](CHANGELOG.
 | `src/cpp/tools/connectome_trace` — full-connectome trace tool                        | **Done** (5/5 tests pass) |
 | NMJ layer (`NeuralIntegrator` + `NeuralState` + `NetworkConfig`)                  | **Done** (3/3 tests pass) |
 | `notebooks/project_tour.ipynb` — C++ output demos + Boyle-Cohen CV + v0.5            | **Done**                  |
-| FEM body (`FEMBody`)                                                                  | Planned                         |
+| FEM body (`FEMBody`) — corotated elastic, UMFPACK, overdamped implicit Euler          | **Done** (3/3 CV-8.x pass) |
 | Compute backends (OpenCL / CUDA)                                                        | Planned                         |
 | Python validation layer                                                                 | Planned                         |
 | Browser 3D viewer                                                                       | Planned                         |

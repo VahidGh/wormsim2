@@ -11,6 +11,7 @@ Thumbs.db
 
 # ── C++ / CUDA build artifacts ────────────────────────────────────────────────
 build/
+build_docker/
 src/cpp/build/
 *.o
 *.a

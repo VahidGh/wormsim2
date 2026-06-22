@@ -1,4 +1,20 @@
 cmake_minimum_required(VERSION 3.22)
+
+# ---------------------------------------------------------------------------
+# deal.II must be found and initialised BEFORE project() — deal.II requirement.
+# ---------------------------------------------------------------------------
+find_package(deal.II 9.5 QUIET
+    HINTS
+        /u/sw/toolchains/gcc-glibc/11.2.0/pkgs/dealii/9.5.1
+        $ENV{DEAL_II_DIR}
+)
+if(deal.II_FOUND)
+    DEAL_II_INITIALIZE_CACHED_VARIABLES()
+    set(WORMSIM2_HAS_DEALII TRUE)
+else()
+    set(WORMSIM2_HAS_DEALII FALSE)
+endif()
+
 project(wormsim2 VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)

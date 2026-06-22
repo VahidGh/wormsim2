@@ -2,6 +2,13 @@
 # wormsim2 C++ core
 # ---------------------------------------------------------------------------
 
+# deal.II availability set in root CMakeLists.txt (must precede project()).
+if(WORMSIM2_HAS_DEALII)
+    message(STATUS "deal.II ${deal.II_VERSION} found — FEM body enabled")
+else()
+    message(WARNING "deal.II not found — FEM body module (v0.8.0) will be skipped")
+endif()
+
 # ---------------------------------------------------------------------------
 # io — network model loading (NEURON + NeuroML2) and perturbation config
 # ---------------------------------------------------------------------------
@@ -37,6 +44,24 @@ add_library(wormsim2_body STATIC
 target_include_directories(wormsim2_body PUBLIC include)
 target_link_libraries(wormsim2_body PUBLIC wormsim2_neural)
 target_compile_features(wormsim2_body PUBLIC cxx_std_20)
+
+# ---------------------------------------------------------------------------
+# body_fem — corotated-elastic FEM body (v0.8.0, requires deal.II)
+# ---------------------------------------------------------------------------
+if(WORMSIM2_HAS_DEALII)
+    add_library(wormsim2_body_fem STATIC
+        src/body/FEMBodyMesh.cpp
+        src/body/CorotatedElastic.cpp
+        src/body/MuscleMap.cpp
+        src/body/FEMBody.cpp
+        src/body/CurvatureSensor.cpp
+    )
+    target_include_directories(wormsim2_body_fem PUBLIC include)
+    target_compile_features(wormsim2_body_fem PUBLIC cxx_std_20)
+    # Plain (no-keyword) linking required: DEAL_II_SETUP_TARGET also uses plain style.
+    target_link_libraries(wormsim2_body_fem wormsim2_body)
+    DEAL_II_SETUP_TARGET(wormsim2_body_fem)
+endif()
 
 # ---------------------------------------------------------------------------
 # Tools (notebook data runners — always built)
