@@ -58,8 +58,8 @@ jobs:
 
       - name: clang-tidy (NFR-QUAL-01)
         run: |
-          # Run clang-tidy on all src/ files using the compile_commands.json
-          find src/cpp/src -name '*.cpp' | sort | while read f; do
+          # Run clang-tidy on src/ files; skip body/ (deal.II headers not in CI runner)
+          find src/cpp/src -name '*.cpp' -not -path '*/body/*' | sort | while read f; do
             clang-tidy "$f" -p build --quiet 2>&1
           done | tee clang-tidy-output.txt
           # Fail on errors (not warnings) — warnings are informational only
