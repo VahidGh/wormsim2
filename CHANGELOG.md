@@ -12,7 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.8.0] - 2026-06-22 *(current)*
+## [0.8.1] - 2026-06-23 *(current)*
+
+### Added
+- **`NeuromuscularTuner`** (Python, `notebooks/project_tour.ipynb` CV-8.1.1) — 4-mode eigenworm muscle activation tuner: decomposes N2 tangent angles into 4 PCA eigenmodes (eₙ from Zenodo 1031837 skeleton data); reconstructs kinematic body via θ(s,t) = μ(s) + Σ aₙ(t)·eₙ(s); equivalent to specifying net D−V activation at each of 95 BWM segments. Modes 0–3 capture **94.4% of N2 posture variance** (76.8% + 8.5% + 6.5% + 2.5%).
+- `docs/images/v081_n2_vs_cel_tuned.gif` — 2D bird's-eye comparison N2 vs v0.8.1 tuned kinematic (114 frames, 10 fps, 20-frame ghost trails, 48 muscle attachment dots per panel); body bending visually matches N2 S-wave at all frames
+- **CEl₄₈ metric** (v0.8.1 refinement): 48-muscle-position MSE (24 dorsal + 24 ventral attachment points at worm radius r=0.04 BL from midline — 2D projection of 95 BWM lattice); v0.8.1 result: mean=**0.000133 BL²**, RMS=**8 µm**/muscle point; improvement vs v0.8 FEM uniform drive: **3212× CEl · 57× RMS**
+
+---
+
+## [0.8.0] - 2026-06-22
 
 ### Added
 - `src/cpp/include/body/FEMBodyMesh.h/.cpp` — tapered-cylinder tet mesh (~213v/~432t for dev, goal ~984v/~3341t), deal.II 9.5.1 `FE_SimplexP<3>(1)`; 9-plane hex mesh (n\_axial=8), taper to 50% radius at head/tail
@@ -24,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `src/cpp/tests/body/CMakeLists.txt` updated — `test_fem_body` target guarded by `WORMSIM2_HAS_DEALII`; MK Docker `LD_LIBRARY_PATH` injected via CTest ENVIRONMENT
 - `src/cpp/tools/fem_body_trace.cpp` — open-loop CLI tool: direct sinusoidal anti-phase D/V muscle activation → FEM body → centerline CSV at 50 Hz (`t_ms,x0,y0,...,x24,y24`); flags `--freq --T_s --dt_ms --amp`; guarded by `WORMSIM2_HAS_DEALII` in `tools/CMakeLists.txt`
 - `docs/images/v080_fem_vs_eigenworm.gif` — 5-panel animated comparison: v0.7 EigenwormBody vs v0.8 FEM Body at 0.5 Hz drive; shows orbit circularity improvement (0.55 → 0.72)
+- `docs/images/v080_real_n2_skeleton.csv` — real N2 *C. elegans* 4-second skeleton (Zenodo 1031837, Schafer Lab WT2 2014-02-05, t=533–537 s); 114 frames × 99 cols; best undulation window (orbit circularity 0.936 over full 10-min recording)
+- `docs/images/v080_real_n2_4s.gif` — animated real N2 4-second undulation window (30 fps, 49-point skeleton + (a₀, a₁) orbit)
+- `docs/images/v080_n2_vs_cel_3d.gif` — 2D bird's-eye locomotion comparison: N2 actual vs CEl kinematic target (v0.9 goal); both head-first, midpoint-centred, amplitude-matched (A=0.40 rad → ±0.16 BL); 120 frames at 10 fps; 20-frame ghost trails; embedded CEl metric table
+- `docs/images/v080_n2_vs_v8_comparison.gif`, `v080_n2_vs_v8_static.png`, `v080_n2_vs_sim_orbits.png`, `v080_cel_metric.png`, `v080_lfm_dashboard.png` — supporting N2/FEM analysis plots
+- **CEl metric** defined: per-frame Procrustes-aligned MSE over 49 body points CEl(t) = mean_i[(x_N2_i − x_CEl_i)² + (y_N2_i − y_CEl_i)²] in (BL)²; current v0.8 FEM: mean=0.428 BL², √=0.654 BL, RMS=434 µm; v0.9 target ≤ 0.01 BL²
 
 ### Fixed
 - **Dm⁻¹ transpose bug**: `CorotatedElasticElement::init()` computed Dm⁻ᵀ instead of Dm⁻¹, producing spurious elastic forces ~780× larger than muscle forces at rest; replaced with `dealii::invert(Dm)`

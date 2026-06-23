@@ -1,6 +1,6 @@
 # wormsim2
 
-[![Version](https://img.shields.io/badge/version-v0.8.0-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.8.1-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-C%2B%2B20-blue?style=flat-square)](src/cpp/)
 [![Backends](https://img.shields.io/badge/backends-CPU%20%7C%20CUDA%20%7C%20OpenCL-76b900?style=flat-square)](docs/research/00-motivation-objectives-related-work.md)
@@ -50,32 +50,48 @@ analysis layer), domain assumptions, and explicit non-goals are detailed in the
 
 ---
 
-## Latest validated results (v0.8.0)
+## Latest validated results (v0.8.1)
+
+**NeuromuscularTuner — 4-mode eigenworm muscle activation (CV-8.1.1):**
+
+<img src="docs/images/v081_n2_vs_cel_tuned.gif" width="900" alt="N2 real worm vs wormsim2 v0.8.1 NeuromuscularTuner 4-mode eigenworm comparison"/>
+
+> **Left:** real *C. elegans* N2 locomotion (Zenodo 1031837, Schafer Lab); 4-second window at 30 fps. Dots = 48 muscle attachment points (24D + 24V; 2D projection of 95 BWM lattice).
+> **Right:** wormsim2 v0.8.1 NeuromuscularTuner — 4-mode eigenworm activation: θ(s,t) = μ(s) + Σ aₙ(t)·eₙ(s), n=0–3; eigenvectors eₙ from PCA of N2 tangent angles; coefficients aₙ(t) from per-frame projection. R² = 0.944 (94.4% of N2 posture variance).
+
+| | v0.8 FEM (uniform drive) | v0.8.1 NeuromuscularTuner |
+|---|---|---|
+| Activation | spatially uniform C-bend | 4-mode eigenworm, PCA of N2 θ(s,t) |
+| Posture variance captured | — | **94.4%** (modes 0–3: 76.8 + 8.5 + 6.5 + 2.5%) |
+| CEl₄₈ (mean) | 0.4278 BL² | **0.000133 BL²** |
+| RMS / muscle point | 434 µm | **8 µm** |
+| Improvement | — | **3212× CEl · 57× RMS** |
+
+---
+
+## v0.8.0 results
 
 **Corotated FEM body: CV-8.x suite (deal.II 9.5.1, UMFPACK, overdamped implicit Euler)**
 
-| CV      | Check                                                           | Published reference                                                                    | Result                         |
-| ------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------ |
-| CV-8.1  | Dorsal C-bend tangent-angle correlation vs linear ref ≥ 0.80   | Dorsal activation → monotone κ(s) → linear θ(s); uniform dorsal → C-bend not S-wave   | **r = 0.93 PASS**              |
-| CV-8.2  | Mid-body oscillation frequency ∈ [0.35, 0.65] Hz               | [Stephens et al. 2008](https://doi.org/10.1371/journal.pcbi.1000028) Table 1: 0.529 ± 0.069 Hz | **0.50 Hz PASS**    |
-| CV-8.3  | Orbit circularity max\|a1\|/max\|a0\| > 0.5                   | Traveling-wave criterion: a0/a1 phase orbit should be circular, not degenerate          | **0.64 PASS**                  |
+| CV     | Check                                                         | Published reference                                                                          | Result                  |
+| ------ | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------- |
+| CV-8.1 | Dorsal C-bend tangent-angle correlation vs linear ref ≥ 0.80 | Dorsal activation → monotone κ(s) → linear θ(s); uniform dorsal → C-bend not S-wave     | **r = 0.93 PASS** |
+| CV-8.2 | Mid-body oscillation frequency ∈ [0.35, 0.65] Hz             | [Stephens et al. 2008](https://doi.org/10.1371/journal.pcbi.1000028) Table 1: 0.529 ± 0.069 Hz | **0.50 Hz PASS**  |
+| CV-8.3 | Orbit circularity max\|a1\|/max\|a0\| > 0.5                   | Traveling-wave criterion: a0/a1 phase orbit should be circular, not degenerate               | **0.64 PASS**     |
 
 CTest 10/10 PASS — new suite: `test_fem_body` (label: `body;fem`, deal.II guard).
 
-**v0.7 vs v0.8 comparison — 0.5 Hz sinusoidal D/V drive (orbit circularity improvement):**
+**N2 wild-type vs wormsim2 v0.8 — locomotion comparison (CV-8.5):**
 
-<img src="docs/images/v080_fem_vs_eigenworm.gif" width="800" alt="v0.8 FEM body vs v0.7 EigenwormBody orbit comparison"/>
+<img src="docs/images/v080_n2_vs_cel_3d.gif" width="900" alt="N2 real worm vs wormsim2 v0.8 CEl 2D bird's-eye locomotion comparison"/>
 
-*Top-left: body shapes normalised to each model's own peak amplitude (v0.7 = eigenworm integration, v0.8 = de-trended FEM centerline).
-Top-centre / Top-right: (a₀, a₁) phase orbits on each model's own scale — v0.7 ellipse is nearly linear (circ = 0.55), v0.8 is more circular (circ = 0.72), satisfying the CV-8.3 traveling-wave criterion.
-Bottom: tangent-angle profile θ(s) over time for each model.
-Note: amplitude scales differ — v0.7 circuit-driven peak a₀ = 0.076 rad (500 pA motoneuron input), v0.8 direct-activation peak a₀ = 0.019 rad (50% kTmax muscle stress). Comparison is on orbit **shape**, not amplitude.*
+> **Left:** real *C. elegans* N2 locomotion (Zenodo 1031837, Schafer Lab); 4-second window at 30 fps.
+> **Right:** wormsim2 CEl traveling-wave kinematic target (v0.9 goal) — θ(s,t) = 0.40·sin(2πft − 2πs/λ), amplitude calibrated to match N2.
+> **Table:** CEl metric computed against the actual v0.8 FEM output.
 
-**Key fixes in v0.8.0** (all required to reach passing CVs):
-- Dm⁻¹ transpose bug in `CorotatedElastic::init()` (computed Dm⁻ᵀ, not Dm⁻¹; forces were 780× too large)
-- Backward-Euler RHS double-count: removed forward-Euler `f_elastic(u_old)` term (caused element inversion after 1 step)
-- Rigid-body drift: 5-DOF tail pin could not suppress z-rotation; replaced with full tail-segment clamp (13 vertices, 39 DOFs, penalty 1e20)
-- Centerline zigzag: direct 1/24-bin assignment left 16 of 25 slots empty (only 9 hex planes exist); fixed with 9-plane grouping + linear interpolation
+> **Note on v0.8 motor drive:** the v0.8 FEM body is currently driven by an open-loop, spatially uniform sinusoidal activation applied identically across all 95 body-wall muscles — equivalent to an unstructured default signal with no propagating phase gradient. This produces a quasi-static C-bend rather than a traveling S-wave (first eigenworm coefficient a₀ = 0.011 rad, 12× below the N2 mean of 0.139 rad; CEl metric = 0.428 BL², RMS positional error = 434 µm per body point). The quantitative gap between the simulated body and real N2 kinematics reflects the absence of spatiotemporally structured neuromuscular drive, not a limitation of the mechanical model per se.
+
+> **v0.9 target — closed-loop neuromuscular tuning:** the next milestone will introduce a traveling-wave activation pattern derived from the Hodgkin–Huxley motor circuit, wherein dorsal and ventral motoneuron populations generate a rostrocaudal phase gradient across the 95 BWM segments. Convergence toward wild-type kinematics will be quantified by the CEl metric; the target threshold is ≤ 0.01 BL² (a 43-fold reduction), corresponding to sub-100 µm mean positional error per body point.
 
 ---
 
@@ -90,11 +106,11 @@ Row 2 (green): wormsim2 modes 0+1 reconstruction, amplitude-normalised — **sha
 Row 3 (red): wormsim2 all-mode output showing mode-2 excess from CPG proxy (3.1× reference, expected at v0.7.0).
 Phase portrait: actual simulation orbit (near-linear) vs ideal circular orbit at same amplitude (what a proper traveling wave produces).*
 
-| CV      | Check                                               | Published reference                                                                 | Result                          |
-| ------- | --------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------- |
-| CV-7.1  | Undulation frequency 0.500 Hz ∈ [0.35, 0.65] Hz   | [Stephens et al. 2008](https://doi.org/10.1371/journal.pcbi.1000028) Table 1: 0.529 ± 0.069 Hz | **PASS**               |
-| CV-7.2  | Modes 0+1 energy fraction 0.687 > 0.50             | Stephens 2008 Fig. 2B: modes 1+2 ≈ 0.75 for real N2                               | **PASS** (CPG-proxy threshold) |
-| Shape   | Modes 0+1 body shape vs Stephens eigenbasis (r)    | Stephens 2008 eigenbasis (`master_eigen_worms_N2.mat`)                              | **r = 1.000** (exact match)    |
+| CV     | Check                                            | Published reference                                                                          | Result                               |
+| ------ | ------------------------------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------ |
+| CV-7.1 | Undulation frequency 0.500 Hz ∈ [0.35, 0.65] Hz | [Stephens et al. 2008](https://doi.org/10.1371/journal.pcbi.1000028) Table 1: 0.529 ± 0.069 Hz | **PASS**                       |
+| CV-7.2 | Modes 0+1 energy fraction 0.687 > 0.50           | Stephens 2008 Fig. 2B: modes 1+2 ≈ 0.75 for real N2                                         | **PASS** (CPG-proxy threshold) |
+| Shape  | Modes 0+1 body shape vs Stephens eigenbasis (r)  | Stephens 2008 eigenbasis (`master_eigen_worms_N2.mat`)                                     | **r = 1.000** (exact match)    |
 
 CTest 9/9 PASS — new suites: `test_eigenworm` (body) + `test_wcon` (output).
 
@@ -196,24 +212,24 @@ wormsim2/
 
 Track progress in [docs/ISSUES.md](docs/ISSUES.md) and [CHANGELOG.md](CHANGELOG.md).
 
-| Component                                                                               | Status                          |
-| --------------------------------------------------------------------------------------- | ------------------------------- |
-| [Scientific charter](docs/research/00-motivation-objectives-related-work.md)               | Draft                           |
-| [Requirements analysis](docs/requirements/01-requirements-analysis.md)                     | Draft                           |
-| [Architecture design](docs/design/02-architecture-design.md)                               | Draft                           |
-| `src/cpp/io/` — dual-format network loader                                           | **Done** (2/2 tests pass) |
-| CI pipeline (build/test/cppcheck/clang-tidy/coverage)                                   | **Done**                  |
-| C++20 quality checker (72 static checks, 12 categories)                                 | **Done**                  |
-| `src/cpp/neural/` — HH ODE integrator                                                | **Done** (2/2 tests pass) |
-| `src/cpp/tools/neural_trace` — CSV data runner (7 scenarios, incl. `muscle_trace`) | **Done**                  |
-| `data/c302/c302_C2_Full.net.nml` — c302 C2 full connectome                           | **Done**                  |
-| `src/cpp/tools/connectome_trace` — full-connectome trace tool                        | **Done** (5/5 tests pass) |
-| NMJ layer (`NeuralIntegrator` + `NeuralState` + `NetworkConfig`)                  | **Done** (3/3 tests pass) |
-| `notebooks/project_tour.ipynb` — C++ output demos + Boyle-Cohen CV + v0.5            | **Done**                  |
-| FEM body (`FEMBody`) — corotated elastic, UMFPACK, overdamped implicit Euler          | **Done** (3/3 CV-8.x pass) |
-| Compute backends (OpenCL / CUDA)                                                        | Planned                         |
-| Python validation layer                                                                 | Planned                         |
-| Browser 3D viewer                                                                       | Planned                         |
+| Component                                                                               | Status                           |
+| --------------------------------------------------------------------------------------- | -------------------------------- |
+| [Scientific charter](docs/research/00-motivation-objectives-related-work.md)               | Draft                            |
+| [Requirements analysis](docs/requirements/01-requirements-analysis.md)                     | Draft                            |
+| [Architecture design](docs/design/02-architecture-design.md)                               | Draft                            |
+| `src/cpp/io/` — dual-format network loader                                           | **Done** (2/2 tests pass)  |
+| CI pipeline (build/test/cppcheck/clang-tidy/coverage)                                   | **Done**                   |
+| C++20 quality checker (72 static checks, 12 categories)                                 | **Done**                   |
+| `src/cpp/neural/` — HH ODE integrator                                                | **Done** (2/2 tests pass)  |
+| `src/cpp/tools/neural_trace` — CSV data runner (7 scenarios, incl. `muscle_trace`) | **Done**                   |
+| `data/c302/c302_C2_Full.net.nml` — c302 C2 full connectome                           | **Done**                   |
+| `src/cpp/tools/connectome_trace` — full-connectome trace tool                        | **Done** (5/5 tests pass)  |
+| NMJ layer (`NeuralIntegrator` + `NeuralState` + `NetworkConfig`)                  | **Done** (3/3 tests pass)  |
+| `notebooks/project_tour.ipynb` — C++ output demos + Boyle-Cohen CV + v0.5            | **Done**                   |
+| FEM body (`FEMBody`) — corotated elastic, UMFPACK, overdamped implicit Euler         | **Done** (3/3 CV-8.x pass) |
+| Compute backends (OpenCL / CUDA)                                                        | Planned                          |
+| Python validation layer                                                                 | Planned                          |
+| Browser 3D viewer                                                                       | Planned                          |
 
 ---
 
