@@ -50,18 +50,7 @@ analysis layer), domain assumptions, and explicit non-goals are detailed in the
 
 ---
 
-## Latest validated results (v0.9.0)
-
-**3D space-time comparison — N2 crawling vs NeuromuscularTuner (CV-9.1):**
-
-<img src="docs/images/v090_n2_vs_cel_3d.gif" width="900" alt="3D space-time: N2 vs NeuromuscularTuner — X=lateral, Y=forward, Z=time"/>
-
-> X = lateral (mm) · Y = forward (mm) · Z = time (s). Body ribbon at each frame + growing head helix encodes shape AND translational trajectory in one view. Grid = 0.1 mm. Camera sweeps 30° over 4 s.
-> [**▶ Open interactive 3D animation (scrubber + pan/zoom)**](docs/images/v090_n2_vs_cel_3d.html)
-
----
-
-## v0.8.2 results
+## Latest validated results (v0.8.2)
 
 **NeuromuscularTuner — interactive Plotly animation (CV-8.1.1):**
 
