@@ -47,6 +47,11 @@ class TunerConfig:
     t_start: float = 0.0      # window start (s); 0 = use full CSV
     t_end: float = 4.0        # window end   (s)
 
+    # scenario: "crawl" (Schafer agar, 2D x-y) or "swim" (Gyrus/Sznitman, 3D)
+    scenario: str = "crawl"
+    # path to 3D swimming skeleton CSV (Gyrus/Sznitman Zenodo 10.5281/zenodo.7629271)
+    swim_csv: Optional[str] = None
+
     # c302 muscle naming prefix used in NeuroML2 export
     dorsal_prefix: str = "MD"
     ventral_prefix: str = "MV"
@@ -761,6 +766,311 @@ class NeuromuscularTuner:
         fig = self._build_fig()
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         fig.write_html(path, include_plotlyjs="cdn", full_html=True)
+
+    # ── 3D space-time visualisations ─────────────────────────────────────────
+
+    def _space_time_arrays(self):
+        """Return (x_n2, y_n2, t_n2, x_cel, y_cel, t_cel) all in mm / s for 3D plots."""
+        if not hasattr(self, "_frame_cel"):
+            self.tune()
+        BL = self.cfg.bl_mm
+        t  = self.t_out
+        return (
+            self.xN2c * BL, self.yN2c * BL, t,
+            self.xSIM  * BL, self.ySIM  * BL, t,
+        )
+
+    def render_fig_3d(self):
+        """Return the 3D Plotly Figure for inline display in JupyterLab."""
+        import plotly.graph_objects as go
+        # build fig via write_html capture trick
+        _saved = {}
+        orig = go.Figure.write_html
+        def _cap(self_, p, **kw): _saved['fig'] = self_; orig(self_, p, **kw)
+        go.Figure.write_html = _cap
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(suffix='.html', delete=False) as f:
+            tmp = f.name
+        try:
+            self.render_html_3d(tmp)
+        finally:
+            go.Figure.write_html = orig
+            os.unlink(tmp)
+        return _saved['fig']
+
+    def render_html_3d(self, path: str) -> None:
+        """
+        Interactive 3D space-time animation (Plotly Scatter3d, CDN).
+
+        Axes:  X = lateral (mm),  Y = forward (mm),  Z = time (s).
+        Shows N2 (green) and CEl tuner (orange) as animated body ribbons
+        with growing head helix and per-frame speed colouring.
+        """
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+
+        if not hasattr(self, "_frame_cel"):
+            self.tune()
+
+        cfg = self.cfg
+        BL  = cfg.bl_mm
+        N   = len(self.t_out)
+        ns  = cfg.n_skeleton_pts
+
+        xN, yN, t, xC, yC, _ = self._space_time_arrays()
+
+        DARK  = "#0b0f16"
+        C_N2  = "#3ef07e"
+        C_CEL = "#ff9f1c"
+
+        def _speed_color(x, y, t_arr, color_hex):
+            dt = np.diff(t_arr); dx = np.diff(x[:, 0]); dy = np.diff(y[:, 0])
+            spd = np.hypot(dx, dy) / dt * 1000  # µm/s
+            spd = np.r_[spd[0], spd]
+            # map speed to alpha-modified hex not easily done; use colorscale instead
+            return spd
+
+        spd_n2  = _speed_color(xN, yN, t, C_N2)
+        spd_cel = _speed_color(xC, yC, t, C_CEL)
+
+        fig = make_subplots(
+            rows=1, cols=2,
+            specs=[[{"type": "scene"}, {"type": "scene"}]],
+            subplot_titles=["N2 wild-type (Zenodo 1031837)",
+                            "v0.9 NeuromuscularTuner (4-mode)"],
+            horizontal_spacing=0.02,
+        )
+
+        # full head helix (static background)
+        fig.add_trace(go.Scatter3d(
+            x=xN[:, 0].tolist(), y=yN[:, 0].tolist(), z=t.tolist(),
+            mode="lines",
+            line=dict(color=spd_n2.tolist(), colorscale="Greens",
+                      width=3, cmin=float(spd_n2.min()), cmax=float(spd_n2.max())),
+            name="N2 head path", opacity=0.3, showlegend=False,
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter3d(
+            x=xC[:, 0].tolist(), y=yC[:, 0].tolist(), z=t.tolist(),
+            mode="lines",
+            line=dict(color=spd_cel.tolist(), colorscale="Oranges",
+                      width=3, cmin=float(spd_cel.min()), cmax=float(spd_cel.max())),
+            name="CEl head path", opacity=0.3, showlegend=False,
+        ), row=1, col=2)
+
+        # animated body ribbon (initial frame)
+        i0 = 0
+        fig.add_trace(go.Scatter3d(
+            x=xN[i0].tolist(), y=yN[i0].tolist(),
+            z=[t[i0]] * ns,
+            mode="lines+markers",
+            line=dict(color=C_N2, width=5),
+            marker=dict(size=2, color=C_N2),
+            name="N2 body", showlegend=False,
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter3d(
+            x=xC[i0].tolist(), y=yC[i0].tolist(),
+            z=[t[i0]] * ns,
+            mode="lines+markers",
+            line=dict(color=C_CEL, width=5),
+            marker=dict(size=2, color=C_CEL),
+            name="CEl body", showlegend=False,
+        ), row=1, col=2)
+
+        # growing head helix (animated)
+        fig.add_trace(go.Scatter3d(
+            x=xN[:1, 0].tolist(), y=yN[:1, 0].tolist(), z=t[:1].tolist(),
+            mode="lines", line=dict(color=C_N2, width=2),
+            name="N2 trail", showlegend=False,
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter3d(
+            x=xC[:1, 0].tolist(), y=yC[:1, 0].tolist(), z=t[:1].tolist(),
+            mode="lines", line=dict(color=C_CEL, width=2),
+            name="CEl trail", showlegend=False,
+        ), row=1, col=2)
+
+        # frames
+        frames = []
+        for i in range(N):
+            frames.append(go.Frame(
+                data=[
+                    go.Scatter3d(x=xN[i].tolist(), y=yN[i].tolist(),
+                                 z=[t[i]] * ns),
+                    go.Scatter3d(x=xC[i].tolist(), y=yC[i].tolist(),
+                                 z=[t[i]] * ns),
+                    go.Scatter3d(x=xN[:i+1, 0].tolist(), y=yN[:i+1, 0].tolist(),
+                                 z=t[:i+1].tolist()),
+                    go.Scatter3d(x=xC[:i+1, 0].tolist(), y=yC[:i+1, 0].tolist(),
+                                 z=t[:i+1].tolist()),
+                ],
+                traces=[2, 3, 4, 5],
+                name=str(i),
+                layout=go.Layout(
+                    title_text=(
+                        f"t = {t[i]:.2f} s  |  "
+                        f"N2 head speed = {spd_n2[i]:.1f} µm/s  |  "
+                        f"CEl head speed = {spd_cel[i]:.1f} µm/s  |  "
+                        f"CEl₄₈ = {self._frame_cel[i]*1000:.3f} ×10⁻³ BL²"
+                    )
+                ),
+            ))
+        fig.frames = frames
+
+        xlim = 0.32 * BL; ylim = 0.65 * BL
+        scene = dict(
+            xaxis=dict(title="x — lateral (mm)", range=[-xlim, xlim],
+                       gridcolor="#1e2d3f", backgroundcolor=DARK,
+                       dtick=0.1),
+            yaxis=dict(title="y — forward (mm)", range=[-ylim, ylim],
+                       gridcolor="#1e2d3f", backgroundcolor=DARK,
+                       dtick=0.1),
+            zaxis=dict(title="time (s)", range=[0, float(t[-1])],
+                       gridcolor="#1e2d3f", backgroundcolor=DARK),
+            bgcolor=DARK,
+            camera=dict(eye=dict(x=1.6, y=-1.6, z=1.2)),
+        )
+
+        fig.update_layout(
+            paper_bgcolor=DARK,
+            font=dict(color="#b0c0d0", size=11),
+            title=dict(
+                text=(f"wormsim2 v0.9 — 3D space-time (x=lateral, y=forward, z=time)  |  "
+                      f"crawling scenario  |  CEl₄₈={self._frame_cel.mean():.6f} BL²"),
+                font=dict(size=12),
+            ),
+            scene=scene, scene2=scene,
+            updatemenus=[dict(
+                type="buttons", showactive=False,
+                y=0.1, x=1.05, xanchor="left",
+                buttons=[
+                    dict(label="▶ Play", method="animate",
+                         args=[None, {"frame": {"duration": 100, "redraw": True},
+                                      "fromcurrent": True}]),
+                    dict(label="⏸ Pause", method="animate",
+                         args=[[None], {"frame": {"duration": 0}, "mode": "immediate"}]),
+                ],
+            )],
+            sliders=[dict(
+                currentvalue=dict(prefix="frame: ", font=dict(size=10)),
+                pad=dict(t=10),
+                steps=[dict(method="animate",
+                            args=[[str(i)], {"frame": {"duration": 0, "redraw": True},
+                                             "mode": "immediate"}],
+                            label=f"{t[i]:.2f}s") for i in range(N)],
+            )],
+            height=650,
+        )
+
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        fig.write_html(path, include_plotlyjs="cdn", full_html=True)
+
+    def render_gif_3d(self, path: str, fps: int = 10, dpi: int = 120,
+                      elev: float = 25.0, azim_start: float = -60.0,
+                      azim_sweep: float = 0.0) -> None:
+        """
+        Animated GIF: 3D space-time view (x=lateral, y=forward, z=time).
+
+        azim_sweep > 0 slowly rotates the camera while animating.
+        """
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+        import PIL.Image, io
+
+        if not hasattr(self, "_frame_cel"):
+            self.tune()
+
+        BL  = self.cfg.bl_mm
+        N   = len(self.t_out)
+        ns  = self.cfg.n_skeleton_pts
+        xN, yN, t, xC, yC, _ = self._space_time_arrays()
+
+        # head speeds for colour
+        spd_n2 = np.hypot(np.diff(xN[:, 0]), np.diff(yN[:, 0])) / np.diff(t) * 1000
+        spd_n2 = np.r_[spd_n2[0], spd_n2]
+        spd_cl = np.hypot(np.diff(xC[:, 0]), np.diff(yC[:, 0])) / np.diff(t) * 1000
+        spd_cl = np.r_[spd_cl[0], spd_cl]
+
+        BG    = "#0b0f16"
+        C_N2  = "#3ef07e"
+        C_CEL = "#ff9f1c"
+        GC    = "#1a2a3a"
+
+        xlim = 0.32 * BL; ylim = 0.65 * BL
+
+        images = []
+        for i in range(N):
+            azim = azim_start + azim_sweep * i / max(N - 1, 1)
+            fig = plt.figure(figsize=(11, 5.5), facecolor=BG)
+            for col, (xs, ys, trail_x, trail_y, color, label, spd) in enumerate([
+                (xN, yN, xN[:i+1, 0], yN[:i+1, 0], C_N2,
+                 f"N2  {spd_n2[i]:.0f} µm/s", spd_n2),
+                (xC, yC, xC[:i+1, 0], yC[:i+1, 0], C_CEL,
+                 f"NeuromuscularTuner  {spd_cl[i]:.0f} µm/s", spd_cl),
+            ]):
+                ax = fig.add_subplot(1, 2, col + 1, projection="3d",
+                                     facecolor=BG)
+                ax.view_init(elev=elev, azim=azim)
+
+                # ghost head helix (full trajectory, dim)
+                ax.plot(xs[:, 0], ys[:, 0], t, color=color,
+                        alpha=0.15, lw=1, linestyle="--")
+
+                # growing head trail (solid)
+                ax.plot(trail_x, trail_y, t[:i+1],
+                        color=color, lw=1.5, alpha=0.7)
+
+                # body ribbon at current frame
+                ax.plot(xs[i], ys[i], [t[i]] * ns,
+                        color=color, lw=3, zorder=5)
+
+                # head dot
+                ax.scatter([xs[i, 0]], [ys[i, 0]], [t[i]],
+                           s=40, color="white", zorder=6)
+
+                # scale indicator at bottom
+                sx = xlim * 0.55; sy = -ylim * 0.9
+                ax.plot([sx, sx + 0.1], [sy, sy], [0, 0],
+                        color="#aabbcc", lw=2)
+                ax.text(sx + 0.05, sy - 0.04, 0, "0.1 mm",
+                        ha="center", fontsize=6.5, color="#aabbcc")
+
+                # axes style
+                for pane in (ax.xaxis.pane, ax.yaxis.pane, ax.zaxis.pane):
+                    pane.fill = True; pane.set_facecolor(BG)
+                    pane.set_edgecolor(GC)
+                ax.tick_params(colors="#5a7a9a", labelsize=6.5)
+                ax.xaxis.label.set_color("#5a7a9a")
+                ax.yaxis.label.set_color("#5a7a9a")
+                ax.zaxis.label.set_color("#5a7a9a")
+                ax.set_xlabel("x (mm)", labelpad=2)
+                ax.set_ylabel("y (mm)", labelpad=2)
+                ax.set_zlabel("t (s)",  labelpad=2)
+                ax.set_xlim(-xlim, xlim)
+                ax.set_ylim(-ylim, ylim)
+                ax.set_zlim(0, float(t[-1]))
+                ax.set_xticks(np.arange(-0.2, 0.21, 0.1))
+                ax.set_yticks(np.arange(-0.4, 0.41, 0.2))
+                ax.set_title(label, color=color, fontsize=9, pad=4)
+                ax.grid(True, color=GC, linewidth=0.4)
+
+            fig.suptitle(
+                f"wormsim2 v0.9 — 3D space-time  |  t = {t[i]:.2f} s  "
+                f"|  CEl₄₈ = {self._frame_cel[i]*1000:.3f} ×10⁻³ BL²",
+                color="#b0c0d0", fontsize=9, y=1.01,
+            )
+
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png", dpi=dpi, facecolor=BG,
+                        bbox_inches="tight")
+            plt.close(fig)
+            buf.seek(0)
+            images.append(PIL.Image.open(buf).copy())
+
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        dur = int(1000 / fps)
+        images[0].save(path, save_all=True, append_images=images[1:],
+                       loop=0, duration=dur, optimize=False)
 
     def summary(self) -> str:
         r = getattr(self, "_results", None) or self.tune()

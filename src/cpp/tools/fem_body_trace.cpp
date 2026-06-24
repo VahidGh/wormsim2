@@ -127,7 +127,7 @@ int main(int argc, char** argv)
     std::fprintf(stderr, "[fem_body_trace] n_vertices=%d\n", body.n_vertices());
 
     std::printf("t_ms");
-    for (int j = 0; j <= ns; ++j) std::printf(",x%d,y%d", j, j);
+    for (int j = 0; j <= ns; ++j) std::printf(",x%d,y%d,z%d", j, j, j);
     std::printf("\n");
 
     std::array<double, kNMuscles> act{};
@@ -150,7 +150,8 @@ int main(int argc, char** argv)
             auto cl = body.centerline();
             std::printf("%d", static_cast<int>(t_ms_));
             for (int j = 0; j <= ns; ++j)
-                std::printf(",%.5f,%.5f", cl[j].x * 1000.0, cl[j].y * 1000.0);
+                std::printf(",%.5f,%.5f,%.5f",
+                            cl[j].x * 1000.0, cl[j].y * 1000.0, cl[j].z * 1000.0);
             std::printf("\n");
         }
     }

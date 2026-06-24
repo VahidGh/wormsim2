@@ -12,7 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.8.2] - 2026-06-24 *(current)*
+## [0.9.0] - 2026-06-24 *(current)*
+
+### Added
+- **3D space-time visualization (crawling scenario)** — `render_html_3d()` produces an interactive Plotly Scatter3d animation (X=lateral mm, Y=forward mm, Z=time s); body ribbon at each frame + growing head helix encodes both shape and translational trajectory in one view; scrubber + play/pause; CDN Plotly HTML
+- **`render_gif_3d(azim_sweep)`** — matplotlib 3D animated GIF with optional slow camera rotation; same axes; 0.1 mm scale bar; per-frame speed annotation; growing head trail
+- **`render_fig_3d()`** — returns `go.Figure` for inline JupyterLab display
+- **`TunerConfig.scenario`** (`"crawl"` default) + **`TunerConfig.swim_csv`** — slot for future Gyrus/Sznitman swimming dataset (Zenodo 10.5281/zenodo.7629271)
+- **`fem_body_trace` z output** — CSV now includes `z0,...,z24` columns (from 3D FEM mesh `CenterlinePoint.z`)
+- `docs/images/v090_n2_vs_cel_3d.{gif,html,png}` — generated outputs
+- `notebooks/project_tour.ipynb` — cells 78–79: CV-9.1 description + `render_fig_3d()` widget output
+
+### Changed
+- `src/cpp/tools/fem_body_trace.cpp` — header + output lines updated to `x,y,z` per centerline point
+
+---
+
+## [0.8.2] - 2026-06-24
 
 ### Added
 - **`src/python/tuner.py`** — `NeuromuscularTuner` as an importable Python module; `TunerConfig` dataclass (YAML-loadable) exposes all user-editable params (`n_modes`, `f_hz`, `r_bwm`, `skeleton_csv`, `bl_mm`, etc.); `NeuromuscularTuner(cfg).tune()` returns CEl₄₈ results dict; `render_html(path)` produces a self-contained interactive Plotly animation (scrubber, play/pause, curvature gradient along body, cumulative head trail, N2 vs CEl speed + CEl₄₈ time-series panel); exports: `to_activation_csv()`, `to_neuroml()`, `to_neuron_hoc()`
