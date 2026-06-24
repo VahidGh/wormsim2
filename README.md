@@ -1,6 +1,6 @@
 # wormsim2
 
-[![Version](https://img.shields.io/badge/version-v0.8.1-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.8.2-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-C%2B%2B20-blue?style=flat-square)](src/cpp/)
 [![Backends](https://img.shields.io/badge/backends-CPU%20%7C%20CUDA%20%7C%20OpenCL-76b900?style=flat-square)](docs/research/00-motivation-objectives-related-work.md)
@@ -50,16 +50,17 @@ analysis layer), domain assumptions, and explicit non-goals are detailed in the
 
 ---
 
-## Latest validated results (v0.8.1)
+## Latest validated results (v0.8.2)
 
-**NeuromuscularTuner — 4-mode eigenworm muscle activation (CV-8.1.1):**
+**NeuromuscularTuner — interactive Plotly animation (CV-8.1.1):**
 
-<img src="docs/images/v081_n2_vs_cel_tuned.gif" width="900" alt="N2 real worm vs wormsim2 v0.8.1 NeuromuscularTuner 4-mode eigenworm comparison"/>
+<img src="docs/images/v082_n2_vs_cel_tuned.gif" width="900" alt="N2 real worm vs wormsim2 v0.8.2 NeuromuscularTuner — animated comparison with 0.1 mm grid"/>
 
-> **Left:** real *C. elegans* N2 locomotion (Zenodo 1031837, Schafer Lab); 4-second window at 30 fps. Dots = 48 muscle attachment points (24D + 24V; 2D projection of 95 BWM lattice).
-> **Right:** wormsim2 v0.8.1 NeuromuscularTuner — 4-mode eigenworm activation: θ(s,t) = μ(s) + Σ aₙ(t)·eₙ(s), n=0–3; eigenvectors eₙ from PCA of N2 tangent angles; coefficients aₙ(t) from per-frame projection. R² = 0.944 (94.4% of N2 posture variance).
+> **Left:** real *C. elegans* N2 locomotion (Zenodo 1031837, Schafer Lab); 4-second window at 10 fps. White dot = head; dotted line = cumulative head trajectory; dots = 48 muscle attachment points (24D + 24V). Grid spacing = 0.1 mm.
+> **Right:** wormsim2 v0.8.2 `NeuromuscularTuner` — 4-mode eigenworm activation: θ(s,t) = μ(s) + Σ aₙ(t)·eₙ(s), n=0–3; R² = 0.944 (94.4% posture variance). Same grid and scale.
+> [**▶ Open interactive animation (scrubber + speed panel)**](docs/images/v082_n2_vs_cel_tuned.html)
 
-| | v0.8 FEM (uniform drive) | v0.8.1 NeuromuscularTuner |
+| | v0.8 FEM (uniform drive) | v0.8.2 NeuromuscularTuner |
 |---|---|---|
 | Activation | spatially uniform C-bend | 4-mode eigenworm, PCA of N2 θ(s,t) |
 | Posture variance captured | — | **94.4%** (modes 0–3: 76.8 + 8.5 + 6.5 + 2.5%) |

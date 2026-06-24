@@ -12,7 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.8.1] - 2026-06-23 *(current)*
+## [0.8.2] - 2026-06-24 *(current)*
+
+### Added
+- **`src/python/tuner.py`** — `NeuromuscularTuner` as an importable Python module; `TunerConfig` dataclass (YAML-loadable) exposes all user-editable params (`n_modes`, `f_hz`, `r_bwm`, `skeleton_csv`, `bl_mm`, etc.); `NeuromuscularTuner(cfg).tune()` returns CEl₄₈ results dict; `render_html(path)` produces a self-contained interactive Plotly animation (scrubber, play/pause, curvature gradient along body, cumulative head trail, N2 vs CEl speed + CEl₄₈ time-series panel); exports: `to_activation_csv()`, `to_neuroml()`, `to_neuron_hoc()`
+- **`src/python/__init__.py`** — Python package init
+- **`fem_body_trace --activation-csv <path>`** — new CSV drive mode in `src/cpp/tools/fem_body_trace.cpp`; reads 24-col signed net D-V activation, linearly interpolates to simulation timestep, maps via `net_to_muscles()` to 95-muscle array; existing sine mode unchanged
+
+### Changed
+- `docs/file-registry.md` — updated `v081_n2_vs_cel_tuned.gif` description (correct 4-mode metrics); added rows for `v082_activation.csv`, `v082_tuner_drive.nml`, `v082_tuner_drive.hoc`; updated `fem_body_trace.cpp` description
+- `notebooks/project_tour.ipynb` — summary table updated through v0.8.2; cell 77 now imports `NeuromuscularTuner` from `src/python/tuner.py` rather than defining inline
+
+---
+
+## [0.8.1] - 2026-06-23
 
 ### Added
 - **`NeuromuscularTuner`** (Python, `notebooks/project_tour.ipynb` CV-8.1.1) — 4-mode eigenworm muscle activation tuner: decomposes N2 tangent angles into 4 PCA eigenmodes (eₙ from Zenodo 1031837 skeleton data); reconstructs kinematic body via θ(s,t) = μ(s) + Σ aₙ(t)·eₙ(s); equivalent to specifying net D−V activation at each of 95 BWM segments. Modes 0–3 capture **94.4% of N2 posture variance** (76.8% + 8.5% + 6.5% + 2.5%).
