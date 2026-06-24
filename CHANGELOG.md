@@ -12,7 +12,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.9.0] - 2026-06-24 *(current)*
+## [0.9.1] - 2026-06-24 *(current)*
+
+### Added
+- **`swim_skeleton()`** — retrograde bend-wave model (Fang-Yen 2010 PNAS): θ_bend(s,t)=A·sin(2π(ft−s/λ)), f=1.76 Hz, λ=0.65 BL, 1.54 spatial cycles; integration convention matches `_reconstruct()` (phi=cumsum(theta)−π/2); head at +Y, midpoint fixed at (0,0); loads real 3D data if `TunerConfig.swim_csv` is set
+- **`render_gif_crawl_swim()`** — 2D side-by-side GIF: crawling N2 (green, left) vs Fang-Yen swim model (blue, right); 0.1 mm grid, head dot, scale bar, 12 fps; both centered at geometric midpoint
+- **`crawl_swim_metrics()`** — kinematic validation dict: crawl R², CEl₄₈, RMS (from Zenodo 1031837); swim f=1.76 Hz, λ=0.65 BL, f_ratio vs Fang-Yen crawl ref (3.52×); 3D validation pending (Sznitman/Gyrus Zenodo or Tierpsy)
+- **`TunerConfig.swim_f_hz`** (1.76), **`swim_amp_scale`** (0.58), **`swim_speed_bl`** (0.30), **`swim_csv`** — YAML-editable swimming parameters
+- `docs/images/v091_crawl_vs_swim.{gif,png}`
+- `notebooks/project_tour.ipynb` — CV-9.1 metrics table (R²=0.944, CEl₄₈=1.33×10⁻⁴ BL², RMS=7.7 µm) + CV-9.2 cumulative table + 2D crawl/swim GIF display
+- **Nguyen 2018 3D real-worm dataset integration** — downloaded figshare DOI 10.6084/m9.figshare.6670805; `MidlineSkeletons.mat` (601 frames × 25 body pts × XYZ µm, N2 foraging in agarose gel, 20 fps, L≈604 µm); stored at `docs/research/nguyen2018/`
+- **`crawl_3d_skeleton()`** — synthetic correlated random walk head trajectory + 3D azimuthal/polar traveling-wave body shape; (n_frames, 25, 3) µm output
+- **`crawl_3d_skeleton_tracked()`** — real Nguyen 2018 head path + undulation-wave body integration; heading extracted from Gaussian-smoothed XY velocity (pol=0 to avoid Z instability)
+- **`crawl_3d_skeleton_trackfollow()`** — retrograde track-following model: each body segment traces the same 3D path as the head, delayed by `ds / v_wave` per segment step (v_wave = f × λ × L = 272 µm/s, tail lag ≈ 2.2 s); head error = 0 by construction; body RMSE = 278.7 µm (46.1% BL) vs Nguyen 2018 real skeleton
+- **`render_fig4b_match()`** — 3-panel animated GIF (3D + XY + XZ projections); viridis time colormap; head trail; accepts external `xyz` array
+- `docs/images/nguyen2018_fig4b_reconstruction.png` — real-data Fig 4(b) reconstruction (all 601 frames overlaid)
+- `docs/images/nguyen2018_fig4b_tracked.gif` / `nguyen2018_fig4b_tracked_compare.png` — track-following animation + side-by-side vs real data on matched axes
+- `docs/images/nguyen2018_fig4b_error.png` — body-position error heatmap, per-segment mean, and per-frame mean vs Nguyen 2018 real skeleton
+- `docs/images/ref_nguyen2017_3d_foraging_fig4.jpg` / `ref_nguyen2017_3d_eigenworms_fig7.jpg` / `ref_nguyen2017_3d_swimming_fig8.jpg` — reference screenshots from Nguyen 2018 paper
+- `notebooks/project_tour.ipynb` — cell 82: real-data Fig 4(b) reconstruction; cell 83 (CV-9.2): track-following simulation + GIF + side-by-side comparison + body RMSE error plot
+- `README.md` — v0.9.1 results section: Nguyen 2018 publication DOI + figshare dataset DOI, track-following animation, matched-axes comparison, error table
+
+---
+
+## [0.9.0] - 2026-06-24
 
 ### Added
 - **3D space-time visualization (crawling scenario)** — `render_html_3d()` produces an interactive Plotly Scatter3d animation (X=lateral mm, Y=forward mm, Z=time s); body ribbon at each frame + growing head helix encodes both shape and translational trajectory in one view; scrubber + play/pause; CDN Plotly HTML

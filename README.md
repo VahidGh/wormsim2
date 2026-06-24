@@ -1,6 +1,6 @@
 # wormsim2
 
-[![Version](https://img.shields.io/badge/version-v0.9.0-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.9.1-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-C%2B%2B20-blue?style=flat-square)](src/cpp/)
 [![Backends](https://img.shields.io/badge/backends-CPU%20%7C%20CUDA%20%7C%20OpenCL-76b900?style=flat-square)](docs/research/00-motivation-objectives-related-work.md)
@@ -50,7 +50,41 @@ analysis layer), domain assumptions, and explicit non-goals are detailed in the
 
 ---
 
-## Latest validated results (v0.8.2)
+## Latest validated results (v0.9.1)
+
+**CV-9.2 — 3D foraging trajectory reconstruction vs Nguyen 2018 real-worm data**
+
+> **Publication:** Nguyen et al. (2018) *"Three-dimensional behavioural phenotyping of freely moving C. elegans using quantitative light field microscopy"*, PLOS ONE — [https://doi.org/10.1371/journal.pone.0200108](https://doi.org/10.1371/journal.pone.0200108)
+> **Dataset:** figshare — [https://doi.org/10.6084/m9.figshare.6670805](https://doi.org/10.6084/m9.figshare.6670805) (`MidlineSkeletons.mat`: 601 frames × 25 body points × 3D coordinates, N2 foraging in agarose gel, 20 fps)
+
+wormsim2 `NeuromuscularTuner.crawl_3d_skeleton_trackfollow()` uses the real head positions from the Nguyen et al. 2018 light-field microscopy dataset as the head trajectory and places each body segment using a retrograde track-following model (each segment traces the same 3D path as the head, delayed by `ds / v_wave` per step; phase velocity `v_wave = f × λ × L = 272 µm/s`).
+
+<img src="docs/images/nguyen2018_fig4b_tracked.gif" width="900" alt="wormsim2 track-following — 30 s foraging animation, real Nguyen 2018 head path"/>
+
+> **Animation:** 30 s foraging trajectory at 20 fps (601 frames). Colour encodes time (viridis); red dots = head. Body follows the real Nguyen 2018 head path with a retrograde wave delay of ~2.2 s head-to-tail.
+
+**Side-by-side vs real data (matched axes):**
+
+<img src="docs/images/nguyen2018_fig4b_tracked_compare.png" width="900" alt="Real Nguyen 2018 Fig 4(b) vs wormsim2 track-following — same coordinate frame"/>
+
+> **Left:** Nguyen 2018 Fig 4(b) real skeleton (all 601 frames overlaid).  **Right:** wormsim2 track-following model on the same axes (X, Y, Z in µm; same centering offset). Head trail and overall foraging volume match.
+
+**Body-position error vs real skeleton:**
+
+<img src="docs/images/nguyen2018_fig4b_error.png" width="900" alt="Track-following body-position error vs Nguyen 2018 real skeleton"/>
+
+| Metric | Value | Notes |
+|---|---|---|
+| Head error (k = 0) | **0 µm** | Exact by construction (real positions used) |
+| Overall body RMSE | **278.7 µm = 46.1% BL** | Residual = lateral undulation not in track-following model |
+| Tail error (k = 24) | **443.7 µm** | Tail is furthest from head → largest deviation |
+| Body length L | 604 µm | Nguyen 2018 N2 median |
+
+> Residual error monotonically increases from head to tail (heatmap shows no temporal structure). The gap quantifies the undulation amplitude that the pure track-following model does not capture; the next step is to superimpose the measured eigenworm bending modes.
+
+---
+
+## v0.8.2 results
 
 **NeuromuscularTuner — interactive Plotly animation (CV-8.1.1):**
 

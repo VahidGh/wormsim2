@@ -49,8 +49,13 @@ class TunerConfig:
 
     # scenario: "crawl" (Schafer agar, 2D x-y) or "swim" (Gyrus/Sznitman, 3D)
     scenario: str = "crawl"
-    # path to 3D swimming skeleton CSV (Gyrus/Sznitman Zenodo 10.5281/zenodo.7629271)
+    # path to 3D swimming skeleton CSV — if None, synthetic swimming is generated
+    # (real dataset: Gyrus/Sznitman liquid-gate recordings; format same as skeleton_csv)
     swim_csv: Optional[str] = None
+    # Swimming kinematics (Fang-Yen 2010 PNAS: doi:10.1073/pnas.1003509107)
+    swim_f_hz: float = 1.76        # swimming undulation frequency (Hz)
+    swim_amp_scale: float = 0.58   # peak curvature amplitude relative to crawling
+    swim_speed_bl: float = 0.30    # forward speed (BL/s); crawling ≈ 0.20
 
     # c302 muscle naming prefix used in NeuroML2 export
     dorsal_prefix: str = "MD"
@@ -345,6 +350,88 @@ class NeuromuscularTuner:
 
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         Path(path).write_text(hoc)
+
+    # ── Swimming skeleton ─────────────────────────────────────────────────────
+
+    def swim_skeleton(self) -> tuple:
+        """
+        C. elegans swimming: retrograde tangent-angle wave (Fang-Yen 2010).
+
+        θ(s, t) = π/2 + A · sin(2π · (f·t − s/λ))
+
+        π/2 bias keeps the long axis along Y (forward).
+        The retrograde wave (head s=0 → tail s=1) with λ=0.65 BL produces
+        ~1.54 bend waves along the body and drives the worm forward.
+
+        Parameters (Fang-Yen et al. 2010 PNAS doi:10.1073/pnas.1003509107,
+        N2 worms in water, 20 °C):
+          f  = 1.76 ± 0.14 Hz   (body wave frequency)
+          λ  = 0.65 BL           (spatial wavelength, ~1.54 waves/body)
+          A  = swim_amp_scale × 1.2 rad  (peak tangent-angle amplitude)
+          v  = swim_speed_bl     BL/s (reference; not shown in animation)
+
+        Both worms (crawl and swim) are centered at the body midpoint so
+        that body-shape comparison is on the same coordinate frame.
+
+        To validate against real 3D swimming data, set
+        TunerConfig(swim_csv='path.csv') with columns
+        t_s, x0..x48, y0..y48 (mm).  For 3D: also add z0..z48.
+        Reference datasets: Sznitman/Gyrus lab (Zenodo), Tierpsy recordings.
+
+        Returns (xSW, ySW, t_sw) — all in BL units, shapes (N, M).
+        """
+        if not hasattr(self, "coeffs"):
+            self.tune()
+
+        cfg = self.cfg
+        M   = cfg.n_skeleton_pts
+        MID = cfg.mid_idx
+        N   = len(self.t_out)
+        ds  = 1.0 / (M - 1)
+        t_sw = self.t_out.copy()
+
+        if cfg.swim_csv:
+            d      = pd.read_csv(cfg.swim_csv)
+            t_col  = "t_s" if "t_s" in d.columns else d.columns[0]
+            t_raw  = d[t_col].values
+            x_mm   = d[[f"x{j}" for j in range(M)]].values
+            y_mm   = d[[f"y{j}" for j in range(M)]].values
+            t_rel  = t_raw - t_raw[0]
+            mask   = (t_rel >= cfg.t_start) & (t_rel <= cfg.t_end)
+            t_raw, x_mm, y_mm = t_raw[mask], x_mm[mask], y_mm[mask]
+            dx0 = x_mm[0,0]-x_mm[0,-1]; dy0 = y_mm[0,0]-y_mm[0,-1]
+            rot0 = np.pi/2 - np.arctan2(dy0, dx0)
+            ca, sa = np.cos(rot0), np.sin(rot0)
+            xr = ca*x_mm - sa*y_mm; yr = sa*x_mm + ca*y_mm
+            xSW = (xr - xr[:, MID:MID+1]) / cfg.bl_mm
+            ySW = (yr - yr[:, MID:MID+1]) / cfg.bl_mm
+            return xSW, ySW, np.linspace(0, t_raw[-1]-t_raw[0], len(t_raw))
+
+        # ── synthetic retrograde bend wave ───────────────────────────────────
+        f     = cfg.swim_f_hz              # Hz
+        lam   = 0.65                       # BL — Fang-Yen 2010 Fig. 3b
+        A     = cfg.swim_amp_scale * 1.2   # rad peak tangent-angle amplitude
+        # M-1 segment midpoints — matches _reconstruct() which uses 48-element theta
+        s_arr = np.linspace(0, 1, M - 1)  # arc-length for 48 segments
+
+        xSW = np.zeros((N, M))
+        ySW = np.zeros((N, M))
+
+        for i, t in enumerate(t_sw):
+            # Fang-Yen 2010: θ(s,t) = A·sin(2π(ft − s/λ)) is the ABSOLUTE tangent angle
+            # at each of the 48 segments, in the same "theta_body space" as _reconstruct().
+            # _compute_pca stores theta_body = arctan2(dy,dx) + π/2 so that a straight
+            # upward worm has theta_body≈0.  Swimming adds A·sin(…) oscillation around 0.
+            # _reconstruct applies th = theta_rec − π/2 before integration.
+            # We do the same here — NO cumsum on theta (cumsum would blowup to ~10 rad).
+            theta = A * np.sin(2*np.pi * (f*t - s_arr/lam))   # 48 absolute angles (theta_body space)
+            th    = theta - np.pi/2                             # same shift as _reconstruct
+            xs = np.r_[0.0, np.cumsum(np.cos(th) * ds)]       # 49 body points
+            ys = np.r_[0.0, np.cumsum(np.sin(th) * ds)]
+            xSW[i] = xs - xs[MID]
+            ySW[i] = ys - ys[MID]
+
+        return xSW, ySW, t_sw
 
     def _build_fig(self):
         """Build and return the Plotly Figure (shared by render_html / render_fig)."""
@@ -1071,6 +1158,731 @@ class NeuromuscularTuner:
         dur = int(1000 / fps)
         images[0].save(path, save_all=True, append_images=images[1:],
                        loop=0, duration=dur, optimize=False)
+
+    def render_gif_crawl_swim(self, path: str, fps: int = 10,
+                              dpi: int = 120) -> None:
+        """
+        Side-by-side gait-comparison GIF (v0.8.2 visual style).
+
+        Left  (crawling, green): real N2 skeleton — Schafer Lab/Zenodo 1031837,
+               4-mode PCA (R²=0.944, CEl₄₈=1.33×10⁻⁴ BL², RMS=7.7 µm).
+               Muscle attachment dots (24 dorsal + 24 ventral) shown like render_gif().
+        Right (swimming, blue): retrograde traveling-wave model, Fang-Yen 2010 PNAS
+               (f=1.76 Hz, λ=0.65 BL, 1.54 spatial cycles, A=swim_amp_scale×1.2 rad).
+
+        Both worms centered at body midpoint — direct shape comparison on equal scale.
+        Head trail traces lateral oscillation; per-frame CEl₄₈ / wave-phase annotation.
+        """
+        import matplotlib; matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import PIL.Image, io
+
+        if not hasattr(self, "_frame_cel"):
+            self.tune()
+
+        cfg = self.cfg; BL = cfg.bl_mm
+        r   = cfg.r_bwm; ns = cfg.n_segments
+        N   = len(self.t_out)
+
+        xCR = self.xN2c[:N] * BL
+        yCR = self.yN2c[:N] * BL
+        xSW_bl, ySW_bl, t_sw = self.swim_skeleton()
+        N_fr = min(N, len(t_sw))
+        xSW = xSW_bl[:N_fr] * BL
+        ySW = ySW_bl[:N_fr] * BL
+        t_arr = self.t_out[:N_fr]
+
+        # axis limits: slightly wider than crawling body length
+        xlim = max(np.abs(xCR[:N_fr]).max(), np.abs(xSW).max()) * 1.45
+        ylim = max(np.abs(yCR[:N_fr]).max(), np.abs(ySW).max()) * 1.35
+
+        BG   = "#0b0f16"; GC = "#1a2a3a"
+        C_CR = "#3ef07e"; C_SW = "#38b6ff"; C_TR = "#ffffff"
+
+        def _mpos(xb_bl, yb_bl):
+            """Muscle dot positions (24D + 24V) from body keypoints in BL units."""
+            sn = np.linspace(0, 1, ns + 1); s0 = np.linspace(0, 1, cfg.n_skeleton_pts)
+            xi = np.interp(sn, s0, xb_bl); yi = np.interp(sn, s0, yb_bl)
+            xm = 0.5*(xi[:-1]+xi[1:]);    ym = 0.5*(yi[:-1]+yi[1:])
+            tx = xi[1:]-xi[:-1]; ty = yi[1:]-yi[:-1]
+            L  = np.hypot(tx, ty) + 1e-12; tx /= L; ty /= L
+            return (xm - ty*r)*BL, (ym + tx*r)*BL, (xm + ty*r)*BL, (ym - tx*r)*BL
+
+        def _head_spd_arr(x, y, t):
+            dt = np.diff(t)
+            s  = np.hypot(np.diff(x[:,0]), np.diff(y[:,0])) / dt * 1000
+            return np.r_[s[0], s]
+
+        spd_cr = _head_spd_arr(xCR[:N_fr], yCR[:N_fr], t_arr)
+        spd_sw = _head_spd_arr(xSW, ySW, t_sw[:N_fr])
+
+        images = []
+        trail_cr = [[], []]; trail_sw = [[], []]
+
+        for i in range(N_fr):
+            trail_cr[0].append(xCR[i,0]); trail_cr[1].append(yCR[i,0])
+            trail_sw[0].append(xSW[i,0]); trail_sw[1].append(ySW[i,0])
+
+            fig, axes = plt.subplots(1, 2, figsize=(10, 5.2),
+                                     facecolor=BG, constrained_layout=True)
+            t_s = t_arr[i]
+            phase_sw = (cfg.swim_f_hz * t_s) % 1.0   # wave cycle phase 0..1
+
+            xd_cr, yd_cr, xv_cr, yv_cr = _mpos(self.xN2c[i], self.yN2c[i])
+            cel_i = self._frame_cel[i] if i < len(self._frame_cel) else 0.0
+
+            for ax, xb, yb, trail, col, has_muscles, md, mv in [
+                (axes[0], xCR[i], yCR[i], trail_cr, C_CR, True,
+                 (xd_cr, yd_cr), (xv_cr, yv_cr)),
+                (axes[1], xSW[i], ySW[i], trail_sw, C_SW, False,
+                 (None, None), (None, None)),
+            ]:
+                ax.set_facecolor(BG)
+                ax.set_xlim(-xlim, xlim); ax.set_ylim(-ylim, ylim)
+                ax.set_aspect("equal")
+
+                # grid
+                ax.set_xticks(np.arange(-xlim, xlim+0.001, 0.1))
+                ax.set_yticks(np.arange(-ylim, ylim+0.001, 0.1))
+                ax.grid(True, color=GC, linewidth=0.6, zorder=0)
+                ax.axhline(0, color="#2e4a60", lw=0.8, zorder=1)
+                ax.axvline(0, color="#2e4a60", lw=0.8, zorder=1)
+                ax.tick_params(colors="#5a7a9a", labelsize=7)
+                for sp in ax.spines.values(): sp.set_edgecolor("#2a3a4a")
+
+                # head trail
+                ax.plot(trail[0], trail[1], color=C_TR, lw=0.8,
+                        alpha=0.35, linestyle=":", zorder=2)
+
+                # muscle dots (crawling panel only)
+                if has_muscles:
+                    ax.scatter(md[0], md[1], s=5, color=col, alpha=0.55,
+                               zorder=3, linewidths=0)
+                    ax.scatter(mv[0], mv[1], s=5, color=col, alpha=0.55,
+                               zorder=3, linewidths=0)
+
+                # body
+                ax.plot(xb, yb, color=col, lw=2.2, zorder=4,
+                        solid_capstyle="round")
+
+                # head / tail dots
+                ax.scatter([xb[0]],  [yb[0]],  s=40, color="white",   zorder=5)
+                ax.scatter([xb[-1]], [yb[-1]], s=18, color=col,        zorder=5, alpha=0.7)
+
+                # scale bar 0.1 mm
+                sb_x = xlim * 0.60; sb_y = -ylim * 0.88
+                ax.plot([sb_x, sb_x+0.1], [sb_y, sb_y], color="#aabbcc",
+                        lw=2, zorder=6)
+                ax.text(sb_x+0.05, sb_y+ylim*0.04, "0.1 mm", ha="center",
+                        va="bottom", fontsize=6.5, color="#aabbcc")
+
+                ax.set_xlabel("lateral (mm)", color="#5a7a9a", fontsize=8)
+                ax.set_ylabel("forward (mm)", color="#5a7a9a", fontsize=8)
+
+            # panel titles
+            axes[0].set_title(
+                f"Crawling — real N2 (Schafer Lab/Zenodo 1031837)\n"
+                f"f={cfg.f_hz:.2f} Hz  ·  {spd_cr[i]:.0f} µm/s  ·  "
+                f"CEl₄₈={cel_i*1000:.2f}×10⁻³ BL²",
+                color=C_CR, fontsize=8.5, pad=4)
+            axes[1].set_title(
+                f"Swimming — retrograde wave (Fang-Yen 2010 PNAS)\n"
+                f"f={cfg.swim_f_hz:.2f} Hz · λ=0.65 BL · phase={phase_sw:.2f}  ·  "
+                f"{spd_sw[i]:.0f} µm/s",
+                color=C_SW, fontsize=8.5, pad=4)
+
+            fig.suptitle(
+                f"wormsim2 v0.9.1  |  C. elegans gait comparison  |  t = {t_s:.2f} s",
+                color="#b0c0d0", fontsize=9, y=1.01,
+            )
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png", dpi=dpi, facecolor=BG, bbox_inches="tight")
+            plt.close(fig); buf.seek(0)
+            images.append(PIL.Image.open(buf).copy())
+
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        images[0].save(path, save_all=True, append_images=images[1:],
+                       loop=0, duration=int(1000 / fps), optimize=False)
+
+    def render_fig_crawl_swim(self):
+        """
+        3D space-time interactive Plotly animation: crawl (left, green) vs swim (right, blue).
+
+        Axes: X = lateral (mm), Y = forward (mm), Z = time (s).
+        Worm body at each frame is drawn as a horizontal 3D line at height z=t;
+        the growing head helix traces the locomotion path upward over time.
+        Same approach as render_html_3d() / render_fig_3d() but for gait comparison.
+
+        Returns go.Figure for inline display:  fig = tuner.render_fig_crawl_swim()
+                                               fig.show()
+        """
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+
+        if not hasattr(self, "_frame_cel"):
+            self.tune()
+
+        cfg = self.cfg; BL = cfg.bl_mm
+        M   = cfg.n_skeleton_pts   # 49
+        N   = len(self.t_out)
+        t   = self.t_out           # time array (s)
+
+        # crawl: real N2 skeleton (BL) → mm
+        xCR = self.xN2c * BL; yCR = self.yN2c * BL
+
+        # swim: parametric wave skeleton (BL) → mm
+        xSW_bl, ySW_bl, _ = self.swim_skeleton()
+        xSW = xSW_bl * BL;  ySW = ySW_bl * BL
+        N_fr = min(N, len(xSW))
+
+        def _spd(x, y):
+            dt = np.diff(t[:N_fr])
+            s  = np.hypot(np.diff(x[:N_fr, 0]), np.diff(y[:N_fr, 0])) / dt * 1000
+            return np.r_[s[0], s]   # µm/s, length N_fr
+
+        spd_cr = _spd(xCR, yCR)
+        spd_sw = _spd(xSW, ySW)
+
+        xlim = max(np.abs(xCR[:N_fr]).max(), np.abs(xSW[:N_fr]).max()) * 1.35
+        ylim = max(np.abs(yCR[:N_fr]).max(), np.abs(ySW[:N_fr]).max()) * 1.35
+        tlim = float(t[N_fr - 1])
+
+        DARK = "#0b0f16"; C_CR = "#3ef07e"; C_SW = "#38b6ff"
+
+        fig = make_subplots(
+            rows=1, cols=2,
+            specs=[[{"type": "scene"}, {"type": "scene"}]],
+            subplot_titles=[
+                "Crawling — real N2 (Zenodo 1031837)",
+                "Swimming — retrograde wave (Fang-Yen 2010)",
+            ],
+            horizontal_spacing=0.02,
+        )
+
+        # ── static background: full head helix (faint, shows full trajectory) ─
+        fig.add_trace(go.Scatter3d(           # 0: crawl head helix
+            x=xCR[:N_fr, 0].tolist(), y=yCR[:N_fr, 0].tolist(),
+            z=t[:N_fr].tolist(),
+            mode="lines",
+            line=dict(color=spd_cr.tolist(), colorscale="Greens",
+                      width=3, cmin=float(spd_cr.min()), cmax=float(spd_cr.max())),
+            opacity=0.25, showlegend=False,
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter3d(           # 1: swim head helix
+            x=xSW[:N_fr, 0].tolist(), y=ySW[:N_fr, 0].tolist(),
+            z=t[:N_fr].tolist(),
+            mode="lines",
+            line=dict(color=spd_sw.tolist(), colorscale="Blues",
+                      width=3, cmin=float(spd_sw.min()), cmax=float(spd_sw.max())),
+            opacity=0.25, showlegend=False,
+        ), row=1, col=2)
+
+        # ── animated body slice at current time (traces 2-5) ──────────────────
+        i0 = 0; t0 = float(t[i0])
+        fig.add_trace(go.Scatter3d(           # 2: crawl body slice
+            x=xCR[i0].tolist(), y=yCR[i0].tolist(), z=[t0] * M,
+            mode="lines+markers",
+            line=dict(color=C_CR, width=5),
+            marker=dict(size=2, color=C_CR),
+            showlegend=False,
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter3d(           # 3: swim body slice
+            x=xSW[i0].tolist(), y=ySW[i0].tolist(), z=[t0] * M,
+            mode="lines+markers",
+            line=dict(color=C_SW, width=5),
+            marker=dict(size=2, color=C_SW),
+            showlegend=False,
+        ), row=1, col=2)
+
+        # ── growing head trail (animated, builds up over time) ─────────────────
+        fig.add_trace(go.Scatter3d(           # 4: crawl head trail
+            x=xCR[:1, 0].tolist(), y=yCR[:1, 0].tolist(), z=t[:1].tolist(),
+            mode="lines", line=dict(color=C_CR, width=2),
+            showlegend=False,
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter3d(           # 5: swim head trail
+            x=xSW[:1, 0].tolist(), y=ySW[:1, 0].tolist(), z=t[:1].tolist(),
+            mode="lines", line=dict(color=C_SW, width=2),
+            showlegend=False,
+        ), row=1, col=2)
+
+        # ── animation frames ──────────────────────────────────────────────────
+        frames = []
+        for i in range(N_fr):
+            ti = float(t[i])
+            frames.append(go.Frame(
+                data=[
+                    go.Scatter3d(x=xCR[i].tolist(), y=yCR[i].tolist(),    # 2
+                                 z=[ti] * M),
+                    go.Scatter3d(x=xSW[i].tolist(), y=ySW[i].tolist(),    # 3
+                                 z=[ti] * M),
+                    go.Scatter3d(x=xCR[:i+1, 0].tolist(),                 # 4
+                                 y=yCR[:i+1, 0].tolist(),
+                                 z=t[:i+1].tolist()),
+                    go.Scatter3d(x=xSW[:i+1, 0].tolist(),                 # 5
+                                 y=ySW[:i+1, 0].tolist(),
+                                 z=t[:i+1].tolist()),
+                ],
+                traces=[2, 3, 4, 5],
+                name=str(i),
+                layout=go.Layout(title_text=(
+                    f"t = {ti:.2f} s  |  "
+                    f"crawl {spd_cr[i]:.1f} µm/s  |  "
+                    f"swim {spd_sw[i]:.1f} µm/s  |  "
+                    f"swim phase {(cfg.swim_f_hz * ti) % 1.0:.2f}"
+                )),
+            ))
+        fig.frames = frames
+
+        # ── scene layout (same for both panels) ───────────────────────────────
+        scene = dict(
+            xaxis=dict(title="x — lateral (mm)", range=[-xlim, xlim],
+                       gridcolor="#1e2d3f", backgroundcolor=DARK,
+                       dtick=round(xlim / 2, 2)),
+            yaxis=dict(title="y — forward (mm)", range=[-ylim, ylim],
+                       gridcolor="#1e2d3f", backgroundcolor=DARK,
+                       dtick=round(ylim / 2, 2)),
+            zaxis=dict(title="time (s)", range=[0, tlim],
+                       gridcolor="#1e2d3f", backgroundcolor=DARK),
+            bgcolor=DARK,
+            camera=dict(eye=dict(x=1.6, y=-1.6, z=1.2)),
+        )
+
+        fig.update_layout(
+            paper_bgcolor=DARK,
+            font=dict(color="#b0c0d0", size=11),
+            title=dict(
+                text=(f"wormsim2 v0.9.1 — 3D space-time gait comparison  |  "
+                      f"x=lateral  y=forward  z=time  |  "
+                      f"crawl R²={self.var_exp.sum():.3f}  "
+                      f"f_swim/f_crawl≈3.52×"),
+                font=dict(size=12),
+            ),
+            scene=scene, scene2=scene,
+            updatemenus=[dict(
+                type="buttons", showactive=False,
+                y=0.1, x=1.05, xanchor="left",
+                buttons=[
+                    dict(label="▶ Play", method="animate",
+                         args=[None, {"frame": {"duration": 100, "redraw": True},
+                                      "fromcurrent": True}]),
+                    dict(label="⏸ Pause", method="animate",
+                         args=[[None], {"frame": {"duration": 0},
+                                        "mode": "immediate"}]),
+                ],
+            )],
+            sliders=[dict(
+                currentvalue=dict(prefix="frame: ", font=dict(size=10)),
+                pad=dict(t=10),
+                steps=[dict(
+                    method="animate",
+                    args=[[str(i)], {"frame": {"duration": 0, "redraw": True},
+                                     "mode": "immediate"}],
+                    label=f"{t[i]:.2f}s",
+                ) for i in range(N_fr)],
+            )],
+            height=650,
+        )
+        return fig
+
+    def crawl_swim_metrics(self) -> dict:
+        """
+        Crawl vs swim kinematic metrics — CV-9.2 validation.
+
+        Crawling: measured from real N2 data (Schafer Lab/Zenodo 1031837).
+        Swimming: Fang-Yen 2010 traveling-wave model.
+        Reference: Fang-Yen et al. 2010 PNAS doi:10.1073/pnas.1003509107.
+        3D validation: load Sznitman/Gyrus (Zenodo) or Tierpsy via swim_csv.
+        """
+        if not hasattr(self, "coeffs"):
+            self.tune()
+
+        cfg = self.cfg; BL = cfg.bl_mm
+
+        # crawling undulation frequency — zero-padded FFT of first eigenworm coefficient.
+        # 4× zero-padding raises freq resolution to ~0.07 Hz, enough to resolve ~0.5 Hz.
+        a0     = self.coeffs[:, 0]
+        dt     = float(np.mean(np.diff(self.t_out)))
+        n_fft  = max(512, len(a0) * 4)
+        freqs  = np.fft.rfftfreq(n_fft, dt)
+        psd    = np.abs(np.fft.rfft(a0, n=n_fft))**2
+        band   = (freqs >= 0.1) & (freqs <= 3.0)   # look only in biologically plausible range
+        f_crawl = float(freqs[band][np.argmax(psd[band])])
+
+        # crawling: lateral amplitude (one-sided peak) from real data
+        lat_cr = float(np.abs(self.xN2c).max()) * BL   # mm
+
+        # swimming model lateral amplitude
+        xSW, ySW, _ = self.swim_skeleton()
+        lat_sw = float(np.abs(xSW).max()) * BL         # mm
+
+        res = getattr(self, "_results", None) or self.tune()
+
+        return {
+            "crawl": {
+                "f_hz":        round(f_crawl, 3),
+                "lat_peak_mm": round(lat_cr, 3),
+                "lat_peak_bl": round(lat_cr / BL, 3),
+                "pca_r2":      round(float(res["var_explained"]), 4),
+                "cel48_bl2":   round(float(res["cel_mean_bl2"]), 6),
+                "rms_um":      round(float(res["rms_um"]), 1),
+                "source": "N2 Schafer Lab, Zenodo 1031837, 114 frames @ 30 fps",
+            },
+            "swim_model": {
+                "model":        "retrograde bend wave θ=π/2 + A·sin(2π(ft − s/λ))",
+                "f_hz":         cfg.swim_f_hz,
+                "lambda_bl":    0.65,
+                "A_rad":        round(cfg.swim_amp_scale * 1.2, 3),
+                "lat_peak_mm":  round(lat_sw, 3),
+                "lat_peak_bl":  round(lat_sw / BL, 3),
+                "speed_bl_s":   cfg.swim_speed_bl,
+                "f_ratio_vs_crawl":     round(cfg.swim_f_hz / f_crawl, 2),
+                "f_ratio_vs_ref":       round(cfg.swim_f_hz / 0.50, 2),  # vs Fang-Yen crawl ref
+            },
+            "ref_fang_yen_2010": {
+                "crawl_f_hz":      "0.50 ± 0.05",
+                "swim_f_hz":       "1.76 ± 0.14",
+                "f_ratio":         "3.52 (swim/crawl)",
+                "swim_lambda_bl":  "0.65 ± 0.04",
+                "swim_lat_pp_mm":  "0.137 ± 0.024",
+                "swim_speed_bl_s": "0.33 ± 0.06",
+                "doi":             "10.1073/pnas.1003509107",
+                "conditions":      "N2, 20°C, NGM + water/glycerol",
+            },
+            "validation_3d": {
+                "status":  "pending — no 3D reference loaded",
+                "sources": [
+                    "Sznitman/Gyrus lab 3D swimming Zenodo (provide DOI via swim_csv)",
+                    "Tierpsy 3D recordings (Bhatt lab, MRC LMB Imperial College)",
+                ],
+                "to_measure": [
+                    "θ(s,t) R² vs traveling-wave model",
+                    "head-trajectory 3D curvature vs Sznitman et al. 2010",
+                    "Z-depth oscillation amplitude",
+                ],
+            },
+        }
+
+    # ── 3D crawling simulation (tuned to Nguyen et al. 2018) ──────────────────
+
+    def crawl_3d_skeleton(
+        self,
+        n_frames: int = 600,
+        fps: float = 20.0,
+        # Kinematic parameters fitted to Nguyen 2018 foraging data (Fig 4)
+        L_um: float = 604.0,          # body length µm (median from MidlineSkeletons.mat)
+        n_pts: int = 25,              # body points (Nguyen skeleton resolution)
+        f_hz: float = 0.30,          # undulation frequency Hz (crawl in agarose gel)
+        lam_BL: float = 1.5,         # wavelength (body lengths)
+        A_theta_deg: float = 60.0,   # azimuthal undulation amplitude (degrees)
+        A_phi_deg: float = 15.0,     # polar (out-of-plane) amplitude (degrees)
+        f_phi_ratio: float = 0.5,    # polar freq / azimuthal freq (rolling rate)
+        v_um_s: float = 20.0,        # forward speed µm/s (Nguyen median ≈ 20 µm/s)
+        turn_std_deg_s: float = 6.0, # heading angular noise (deg/s/sqrt-s)
+        seed: int = 42,
+    ) -> np.ndarray:
+        """
+        Generate a 30-second 3D crawling trajectory tuned to Nguyen et al. 2018 Fig 4.
+
+        Kinematic model:
+          azimuthal: θ(s,t) = θ_head(t) + A_θ sin(2π(f t − s/λ))
+          polar:     φ(s,t) = A_φ sin(2π(f_φ t − s/λ) + π/6)
+          tangent:   T = (cos θ cos φ,  sin θ cos φ,  sin φ)
+          body:      p[k+1] = p[k] − T(s_k) ds   (head=0, tail=n_pts-1)
+          head:      correlated random walk at v_um_s µm/s
+
+        Returns
+        -------
+        xyz : ndarray, shape (n_frames, n_pts, 3)  — µm
+        """
+        rng     = np.random.default_rng(seed)
+        dt      = 1.0 / fps
+        A_theta = np.radians(A_theta_deg)
+        A_phi   = np.radians(A_phi_deg)
+        lam_um  = lam_BL * L_um
+        f_phi   = f_hz * f_phi_ratio
+
+        s_arr = np.linspace(0.0, L_um, n_pts)   # arc-length (head=0, tail=L_um)
+        ds    = s_arr[1] - s_arr[0]
+
+        # ── Head trajectory: correlated random walk in 3D ──────────────────────
+        az_arr  = np.zeros(n_frames)
+        pol_arr = np.zeros(n_frames)
+        head    = np.zeros((n_frames, 3))
+        daz = 0.0; dpol = 0.0
+        for t in range(1, n_frames):
+            daz  = 0.95 * daz  + rng.normal(0, np.radians(turn_std_deg_s) * np.sqrt(dt))
+            dpol = 0.90 * dpol + rng.normal(0, np.radians(1.2) * np.sqrt(dt))
+            az_arr[t]  = az_arr[t-1]  + daz
+            pol_arr[t] = np.clip(pol_arr[t-1] + dpol, -0.35, 0.35)
+            fwd = np.array([
+                np.cos(az_arr[t]) * np.cos(pol_arr[t]),
+                np.sin(az_arr[t]) * np.cos(pol_arr[t]),
+                np.sin(pol_arr[t]),
+            ])
+            head[t] = head[t-1] + fwd * v_um_s * dt
+
+        # ── Body shapes: 3D traveling-wave kinematics ──────────────────────────
+        xyz = np.zeros((n_frames, n_pts, 3))
+        for t in range(n_frames):
+            time  = t * dt
+            theta = az_arr[t] + A_theta * np.sin(2*np.pi*(f_hz*time - s_arr/lam_um))
+            phi   = A_phi      * np.sin(2*np.pi*(f_phi*time  - s_arr/lam_um) + np.pi/6)
+            Tx = np.cos(theta) * np.cos(phi)
+            Ty = np.sin(theta) * np.cos(phi)
+            Tz = np.sin(phi)
+            # Integrate backward from head: body[k+1] = body[k] − T(s_k) ds
+            xyz[t, 0] = head[t]
+            xyz[t, 1:, 0] = head[t, 0] - np.cumsum(Tx[:-1]) * ds
+            xyz[t, 1:, 1] = head[t, 1] - np.cumsum(Ty[:-1]) * ds
+            xyz[t, 1:, 2] = head[t, 2] - np.cumsum(Tz[:-1]) * ds
+
+        return xyz   # (n_frames, n_pts, 3)  µm
+
+    def crawl_3d_skeleton_tracked(
+        self,
+        nguyen_mat: str = "docs/research/nguyen2018/ShawM_PLOSONE_2018"
+                          "/foraging worm (Fig 4)/Midline skeletons/MidlineSkeletons.mat",
+        f_hz: float = 0.30,
+        lam_BL: float = 1.5,
+        A_theta_deg: float = 60.0,
+        A_phi_deg: float = 15.0,
+        heading_sigma: float = 12.0,
+    ) -> np.ndarray:
+        """
+        3D crawling skeleton: REAL head trajectory + model body shape (Option A).
+
+        Head position comes directly from Nguyen 2018 MidlineSkeletons.mat body-point 0.
+        Heading direction is derived from a Gaussian-smoothed head velocity (sigma frames)
+        to remove undulation oscillation.  Body shape is our 3D traveling-wave model.
+
+        Returns
+        -------
+        xyz : ndarray (601, 25, 3)  — µm, same frame count as Nguyen data
+        """
+        try:
+            import scipy.io as sio
+            from scipy.ndimage import gaussian_filter1d
+        except ImportError as e:
+            raise ImportError("scipy required for crawl_3d_skeleton_tracked") from e
+
+        mat      = sio.loadmat(nguyen_mat)
+        skel     = mat["smoothSkeletonMatrix"]          # (3, 25, 601)
+        fps_data = float(mat["info"][0, 0]["fps"][0, 0])  # 20
+        n_frames = skel.shape[2]                        # 601
+
+        L_um = float(
+            np.median(np.linalg.norm(np.diff(skel, axis=1), axis=0).sum(axis=0))
+        )
+
+        # Real head positions (601, 3) — already smoothed by Nguyen pipeline
+        head = skel[:, 0, :].T.copy()   # (601, 3)
+
+        # Smooth to extract net heading direction (removes undulation oscillation).
+        # Use XY components only for az — Z is carried by the real head position,
+        # body z-variation comes from A_phi (polar wave term).
+        head_s  = gaussian_filter1d(head, sigma=heading_sigma, axis=0)
+        dh_xy   = np.diff(head_s[:, :2], axis=0, append=head_s[[-1], :2])  # (601, 2)
+        az      = np.arctan2(dh_xy[:, 1], dh_xy[:, 0])
+        pol     = np.zeros(n_frames)   # body stays near horizontal; A_phi handles z-wave
+
+        n_pts   = skel.shape[1]   # 25
+        s_arr   = np.linspace(0.0, L_um, n_pts)
+        ds      = s_arr[1] - s_arr[0]
+        A_theta = np.radians(A_theta_deg)
+        A_phi   = np.radians(A_phi_deg)
+        lam_um  = lam_BL * L_um
+        dt      = 1.0 / fps_data
+
+        xyz = np.zeros((n_frames, n_pts, 3))
+        for t in range(n_frames):
+            time  = t * dt
+            theta = az[t]  + A_theta * np.sin(2*np.pi*(f_hz * time - s_arr / lam_um))
+            phi   = pol[t] + A_phi   * np.sin(2*np.pi*(f_hz * 0.5 * time - s_arr / lam_um)
+                                               + np.pi / 6)
+            Tx = np.cos(theta) * np.cos(phi)
+            Ty = np.sin(theta) * np.cos(phi)
+            Tz = np.sin(phi)
+            xyz[t, 0]    = head[t]
+            xyz[t, 1:, 0] = head[t, 0] - np.cumsum(Tx[:-1]) * ds
+            xyz[t, 1:, 1] = head[t, 1] - np.cumsum(Ty[:-1]) * ds
+            xyz[t, 1:, 2] = head[t, 2] - np.cumsum(Tz[:-1]) * ds
+
+        return xyz   # (601, 25, 3)  µm
+
+    def crawl_3d_skeleton_trackfollow(
+        self,
+        nguyen_mat: str = "docs/research/nguyen2018/ShawM_PLOSONE_2018"
+                          "/foraging worm (Fig 4)/Midline skeletons/MidlineSkeletons.mat",
+        f_hz: float = 0.30,
+        lam_BL: float = 1.5,
+    ) -> np.ndarray:
+        """
+        3D crawling skeleton: track-following model (Option A, refined).
+
+        Each body segment follows the same path as the head, but time-delayed by
+        the wave propagation time.  Phase velocity v_wave = f × λ; delay per segment
+        = (L/n_pts) / v_wave seconds.  This matches the real behaviour where the
+        body sweeps the same track as the head (retrograde wave locomotion).
+
+        Returns
+        -------
+        xyz : ndarray (n_frames, 25, 3)  — µm, same frame count as Nguyen data
+        """
+        try:
+            import scipy.io as sio
+        except ImportError as e:
+            raise ImportError("scipy required") from e
+
+        mat      = sio.loadmat(nguyen_mat)
+        skel     = mat["smoothSkeletonMatrix"]             # (3, 25, 601)
+        fps_data = float(mat["info"][0, 0]["fps"][0, 0])  # 20
+        n_frames = skel.shape[2]                           # 601
+        n_pts    = skel.shape[1]                           # 25
+
+        L_um = float(
+            np.median(np.linalg.norm(np.diff(skel, axis=1), axis=0).sum(axis=0))
+        )
+
+        head      = skel[:, 0, :].T.copy()   # (601, 3)  real head positions in µm
+        v_wave    = f_hz * lam_BL * L_um     # µm/s  phase velocity
+        ds        = L_um / (n_pts - 1)       # µm   segment arc-length spacing
+        tau_frame = (ds / v_wave) * fps_data  # frames of delay per segment step
+
+        xyz = np.zeros((n_frames, n_pts, 3))
+        for k in range(n_pts):
+            delay = k * tau_frame             # frames to look back
+            d_lo  = int(delay)
+            alpha = delay - d_lo             # fractional part
+            for t in range(n_frames):
+                t0 = t - d_lo
+                t1 = t0 - 1
+                p0 = head[max(0, t0)]
+                p1 = head[max(0, t1)]
+                xyz[t, k] = (1.0 - alpha) * p0 + alpha * p1
+
+        return xyz   # (n_frames, 25, 3)  µm
+
+    def render_fig4b_match(
+        self,
+        xyz: "np.ndarray | None" = None,
+        gif_path: str = "docs/images/nguyen2018_fig4b_sim.gif",
+        anim_fps: int = 15,
+        frame_step: int = 4,
+    ) -> np.ndarray:
+        """
+        Animated 3D crawl matching Nguyen 2018 Fig 4(b) style.
+
+        Shows worm body moving in physical xyz space (µm) with:
+          - main 3D perspective + growing head trail (colour = time)
+          - x-y top-view projection
+          - x-z side-view projection
+        Saves animated GIF to gif_path.  Returns xyz array.
+        """
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import matplotlib.gridspec as gridspec
+        import matplotlib.animation as anim_mod
+        import matplotlib.cm as cm
+        from matplotlib.lines import Line2D
+
+        if xyz is None:
+            xyz = self.crawl_3d_skeleton()
+        n_frames = xyz.shape[0]
+        fps_sim  = 20.0
+        t_arr    = np.arange(n_frames) / fps_sim   # 0..30 s
+
+        # Centre on trajectory centroid
+        cx, cy, cz = xyz[:, :, 0].mean(), xyz[:, :, 1].mean(), xyz[:, :, 2].mean()
+        X = xyz[:, :, 0] - cx
+        Y = xyz[:, :, 1] - cy
+        Z = xyz[:, :, 2] - cz
+
+        cmap = plt.cm.viridis
+        pad  = 30  # µm padding around trajectory
+
+        fig = plt.figure(figsize=(13, 8), facecolor="white")
+        gs  = gridspec.GridSpec(2, 3, wspace=0.45, hspace=0.35,
+                                left=0.06, right=0.82, top=0.92, bottom=0.08)
+        ax3d  = fig.add_subplot(gs[:, :2], projection="3d")
+        ax_xy = fig.add_subplot(gs[0, 2])
+        ax_xz = fig.add_subplot(gs[1, 2])
+
+        # Fixed axis limits
+        xl = (X.min()-pad, X.max()+pad)
+        yl = (Y.min()-pad, Y.max()+pad)
+        zl = (Z.min()-pad, Z.max()+pad)
+        ax3d.set_xlim(*xl); ax3d.set_ylim(*yl); ax3d.set_zlim(*zl)
+        ax_xy.set_xlim(*xl); ax_xy.set_ylim(*yl)
+        ax_xz.set_xlim(*xl); ax_xz.set_ylim(*zl)
+
+        for ax, xl_, yl_, tit in [
+            (ax_xy, "X (µm)", "Y (µm)", "X–Y projection (top view)"),
+            (ax_xz, "X (µm)", "Z (µm)", "X–Z projection (side view)"),
+        ]:
+            ax.set_xlabel(xl_, fontsize=8); ax.set_ylabel(yl_, fontsize=8)
+            ax.set_title(tit, fontsize=8); ax.tick_params(labelsize=7)
+            ax.grid(True, lw=0.4, alpha=0.4)
+
+        ax3d.set_xlabel("X (µm)", fontsize=8, labelpad=4)
+        ax3d.set_ylabel("Y (µm)", fontsize=8, labelpad=4)
+        ax3d.set_zlabel("Z (µm)", fontsize=8, labelpad=4)
+        ax3d.tick_params(labelsize=7)
+        ax3d.view_init(elev=25, azim=-60)
+        ax3d.legend([Line2D([0],[0],color="red",marker="o",lw=0,ms=5)], ["Head"],
+                    loc="upper left", fontsize=8, framealpha=0.7)
+
+        # Colorbar
+        sm = cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(0, 30))
+        sm.set_array([])
+        cax = fig.add_axes([0.85, 0.15, 0.02, 0.65])
+        plt.colorbar(sm, cax=cax, label="Time (s)").ax.tick_params(labelsize=8)
+
+        # Animated elements
+        body3d,  = ax3d.plot([], [], [], "k-", lw=1.5, zorder=5)
+        head3d   = ax3d.scatter([], [], [], c="red", s=25, zorder=6, depthshade=False)
+        trail3d  = ax3d.scatter([], [], [], c=[], cmap=cmap, vmin=0, vmax=30,
+                                s=3, alpha=0.7, depthshade=False)
+        body_xy, = ax_xy.plot([], [], "k-", lw=1.5)
+        head_xy  = ax_xy.scatter([], [], c="red", s=15, zorder=5)
+        trail_xy = ax_xy.scatter([], [], c=[], cmap=cmap, vmin=0, vmax=30, s=3, alpha=0.7)
+        body_xz, = ax_xz.plot([], [], "k-", lw=1.5)
+        head_xz  = ax_xz.scatter([], [], c="red", s=15, zorder=5)
+        trail_xz = ax_xz.scatter([], [], c=[], cmap=cmap, vmin=0, vmax=30, s=3, alpha=0.7)
+        title_txt = ax3d.set_title("", fontsize=9)
+
+        def _update(frame_idx):
+            t = min(frame_idx * frame_step, n_frames - 1)
+            x, y, z = X[t], Y[t], Z[t]
+            hx, hy, hz = X[t, 0], Y[t, 0], Z[t, 0]
+
+            body3d.set_data(x, y); body3d.set_3d_properties(z)
+            head3d._offsets3d = ([hx], [hy], [hz])
+            body_xy.set_data(x, y); head_xy.set_offsets([[hx, hy]])
+            body_xz.set_data(x, z); head_xz.set_offsets([[hx, hz]])
+
+            idx_trail  = np.arange(0, t + 1, frame_step)
+            tvals      = t_arr[idx_trail]
+            hxT = X[idx_trail, 0]; hyT = Y[idx_trail, 0]; hzT = Z[idx_trail, 0]
+            trail3d._offsets3d = (hxT, hyT, hzT); trail3d.set_array(tvals)
+            trail_xy.set_offsets(np.c_[hxT, hyT]); trail_xy.set_array(tvals)
+            trail_xz.set_offsets(np.c_[hxT, hzT]); trail_xz.set_array(tvals)
+
+            title_txt.set_text(
+                f"wormsim2 — 3D crawl (tuned to Nguyen 2018)  |  t = {t_arr[t]:.1f} s"
+            )
+            return (body3d, head3d, trail3d, body_xy, head_xy, trail_xy,
+                    body_xz, head_xz, trail_xz)
+
+        n_anim = n_frames // frame_step
+        ani = anim_mod.FuncAnimation(
+            fig, _update, frames=n_anim, blit=False, interval=1000/anim_fps
+        )
+        ani.save(gif_path, writer="pillow", fps=anim_fps)
+        plt.close()
+        print(f"Saved GIF: {gif_path}")
+        return xyz
 
     def summary(self) -> str:
         r = getattr(self, "_results", None) or self.tune()
