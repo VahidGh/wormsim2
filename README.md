@@ -1,6 +1,6 @@
 # wormsim2
 
-[![Version](https://img.shields.io/badge/version-v0.9.1-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.10.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-C%2B%2B20-blue?style=flat-square)](src/cpp/)
 [![Backends](https://img.shields.io/badge/backends-CPU%20%7C%20CUDA%20%7C%20OpenCL-76b900?style=flat-square)](docs/research/00-motivation-objectives-related-work.md)
@@ -50,7 +50,54 @@ analysis layer), domain assumptions, and explicit non-goals are detailed in the
 
 ---
 
-## Latest validated results (v0.9.1)
+## Latest validated results (v0.10.0)
+
+**CV-10.5 — nca-1;nca-2 phenotype reference vs wormsim2 simulation (2D)**
+
+wormsim2 v0.10.0 adds `mutant_skeleton(strain)` and `ion_channel_metrics(strain)` to simulate
+the nca-1;nca-2 NALCN double-knockout. Kinematics are calibrated from published scaling factors
+(Yemini 2013 / Jospin 2007): frequency 0.32 Hz (64% of N2), amplitude ×0.72, speed ×0.43,
+intermittent fainting (prob=1.5%/frame, 1.5 s episodes). Interactive Plotly comparison:
+[`docs/images/v0100_n2_vs_mutant.html`](docs/images/v0100_n2_vs_mutant.html)
+
+<img src="docs/images/v0100_mutant_real_vs_sim.gif" width="900" alt="CV-10.5 — nca-1;nca-2 phenotype reference (real N2 body × Yemini 2013 scaling) vs wormsim2 simulation"/>
+
+> **Left:** Phenotype reference — real N2 skeleton (Zenodo 1031837) with Yemini 2013 mutation scaling applied (72% amplitude, 43% speed, fainting).  
+> **Right:** wormsim2 `mutant_skeleton()` simulation at 0.32 Hz, same fainting mask. Both panels straighten identically during fainting.
+
+| Metric | N2 reference | nca-1;nca-2 | Source |
+|---|---|---|---|
+| Undulation frequency | 0.50 Hz | 0.32 Hz (64%) | Yemini 2013 + Jospin 2007 |
+| Bending amplitude | 1.0× | 0.72× | Yemini 2013 |
+| Forward speed | 1.0× | 0.43× | Yemini 2013 + Gao 2015 |
+| Fainting (body freeze) | — | ~1.5%/frame, 1.5 s | Jospin 2007 |
+
+**CV-10.6 — N2 vs nca-1;nca-2: full-body 3D crawl with biologically-realistic mutant trajectory**
+
+`render_fig4b_mutant_compare()` extends the Nguyen 2018 track-following model (CV-9.2) to compare
+N2 vs nca-1;nca-2 in 3D. The mutant shares the same foraging directional motivation as N2 (same
+turning decisions from the real Nguyen 2018 head data) but its trajectory reflects the physical
+consequences of NCA channel knockout: each frame's head displacement is decomposed into forward +
+lateral components and scaled by `speed_scale=0.43` and `amp_scale=0.72` respectively. During
+fainting episodes the head freezes (body straightens progressively). The slower undulation wave
+(64% frequency) increases the head→tail delay, making the body appear stiffer.
+
+<img src="docs/images/v0100_n2_vs_mutant_3d.gif" width="900" alt="CV-10.6 — N2 vs nca-1;nca-2 3D crawl comparison — biologically-realistic mutant trajectory"/>
+
+> **Left:** N2 wild-type — smooth sinusoidal body follows real Nguyen 2018 head path (viridis trail = time 0→30 s).  
+> **Right:** nca-1;nca-2 — same foraging motivation; slower speed, smaller body curves, fainting pauses freeze the head.  
+> Mutant covers only **~15% of N2's explored XY area** in the same 30 s window.
+
+| Metric | N2 (30 s) | nca-1;nca-2 (30 s) |
+|---|---|---|
+| Head range (X × Y) | 157 × 266 µm | 62 × 103 µm |
+| Net displacement | 247 µm | 81 µm (33% of N2) |
+| Explored XY area | 100% | ~15% |
+| Fainting fraction | — | 32.9% of frames |
+
+---
+
+## v0.9.1 validated results (Nguyen 2018 3D track-following)
 
 **CV-9.2 — 3D foraging trajectory reconstruction vs Nguyen 2018 real-worm data**
 

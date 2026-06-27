@@ -62,6 +62,12 @@
 | `docs/images/v091_crawl_vs_swim_3d_snapshot.png` | v0.9.1 kaleido snapshot at frame 57 (t=1.93s) of 3D space-time animation; 1800×975 px | `fig.write_image()` |
 | `docs/images/v091_fangyen_swim_reference.png` | Reference B: Fang-Yen 2010 swimming wave as 3D space-time matplotlib ribbon (f=1.76 Hz, λ=0.65 BL, 12 body slices); generated from parametric model | notebook cell 81 |
 | `docs/images/v091_crawl_vs_swim.png` | v0.9.1 static preview frame (frame 28) of 2D crawl vs swim GIF; 992×649 px | extracted from GIF |
+| `docs/images/v0100_arclen_cv.png` | v0.10.0 arc-length body distribution plot; time vs arc-length µm; orange=biological 604 µm; green=P75(late)=546 µm | notebook CV-10.1 |
+| `docs/images/v0100_n2_vs_mutant.gif` | v0.10.0 N2 vs nca-1;nca-2 2D eigenworm comparison; 57 frames, 278 KB | `tuner.render_fig_n2_vs_mutant()` — CV-10.2 |
+| `docs/images/v0100_n2_vs_mutant.html` | v0.10.0 Plotly interactive N2 vs nca-1;nca-2 figure; dark bg, ±0.32 BL × ±0.65 BL, curvature colormap, lateral-span panel; 1.7 MB | `tuner.render_fig_n2_vs_mutant()` — CV-10.2 |
+| `docs/images/v0100_mutant_real_vs_sim.gif` | v0.10.0 phenotype-reference (real N2 shapes + Yemini 2013 scaling) vs wormsim2 simulation side-by-side; 57 frames, 287 KB | notebook CV-10.5 |
+| `docs/images/v0100_n2_vs_mutant_3d.gif` | v0.10.0 3D N2 vs nca-1;nca-2 biologically-realistic crawl comparison (Nguyen 2018 scene); 150 frames, 2.9 MB; mutant covers ~15% of N2 XY area | `tuner.render_fig4b_mutant_compare()` — CV-10.6 |
+| `docs/perturbation_nca_knockout.yaml` | PerturbationConfig: NCA gbar_scale=0; D/V motoneuron cell list; expected phenotype (f_scale=0.64, amp_scale=0.72, speed_scale=0.43); doi refs | notebook CV-10.3 |
 
 ---
 

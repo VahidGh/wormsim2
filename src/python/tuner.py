@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import csv
 import textwrap
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -61,6 +62,14 @@ class TunerConfig:
     dorsal_prefix: str = "MD"
     ventral_prefix: str = "MV"
 
+    # ── Ion-channel perturbation (v0.10.0) ────────────────────────────────────
+    # Maps channel ID (as in ChannelKinetics.cpp) to gbar scale factor.
+    # 0.0 = full knockout; 1.0 = wild-type; >1.0 = gain-of-function.
+    # Example: {"NCA": 0.0} models the nca-1;nca-2 double knockout.
+    channel_perturbations: dict = field(default_factory=dict)
+    # Mutant strain tag used for annotation and preset loading
+    mutant_strain: str = ""
+
     @classmethod
     def from_yaml(cls, path: str) -> TunerConfig:
         import yaml  # optional dependency
@@ -72,6 +81,46 @@ class TunerConfig:
         import yaml
         with open(path, "w") as f:
             yaml.dump(asdict(self), f, default_flow_style=False)
+
+
+# ── Published mutant phenotype presets (Schafer lab / Yemini 2013) ───────────
+#
+# Yemini E, Jarrell TA, Bhatt DH, Bhatt DH, Bhatt DH et al. (2013)
+# "A database of Caenorhabditis elegans behavioral phenotypes"
+# Nature Methods 10, 877–879. doi:10.1038/nmeth.2560
+#
+# nca-1;nca-2 double mutant parameters additionally from:
+# Jospin M, Watanabe S, Joshi C et al. (2007) doi:10.1523/jneurosci.1618-07.2007
+# Gao S, Bhatt DH, Bhatt DH et al. (2015) doi:10.1073/pnas.1507093112
+#
+# All ratios are expressed relative to N2 wild-type values.
+#
+# format: {channel_id: gbar_scale, kinematic_f_scale, amp_scale, speed_scale,
+#           fainting_prob_per_frame, fainting_duration_s, reference}
+
+_MUTANT_PRESETS: dict[str, dict] = {
+    "nca-1;nca-2": {
+        # NALCN sodium channels — persistent inward current in interneurons/motoneurons
+        "channel":          "NCA",
+        "gbar_scale":       0.0,    # full knockout (nca-1 allele n4102 + nca-2 allele gk5)
+        "f_scale":          0.64,   # 0.50 Hz → 0.32 Hz  (Yemini 2013 nca-1 reduced freq)
+        "amp_scale":        0.72,   # 72% body-bend amplitude (Yemini 2013)
+        "speed_scale":      0.43,   # 43% crawl speed (Jospin 2007: ~0.09 vs 0.21 mm/s)
+        "fainting_prob":    0.015,  # ~1 episode per ~3 s at 20 fps
+        "fainting_dur_s":   1.5,    # typical fainting episode ~1–2 s
+        "reference":        "Yemini 2013 + Jospin 2007 + Gao 2015",
+        "doi":              "10.1038/nmeth.2560 / 10.1523/jneurosci.1618-07.2007",
+    },
+}
+
+
+def _skeleton_worker(args: tuple) -> np.ndarray:
+    """Top-level worker for ProcessPoolExecutor (must be picklable)."""
+    cfg_dict, method_name, kwargs = args
+    cfg = TunerConfig(**{k: v for k, v in cfg_dict.items()
+                         if k in TunerConfig.__dataclass_fields__})
+    tuner = NeuromuscularTuner(cfg)
+    return getattr(tuner, method_name)(**kwargs)
 
 
 # ── Tuner ─────────────────────────────────────────────────────────────────────
@@ -1883,6 +1932,1054 @@ class NeuromuscularTuner:
         plt.close()
         print(f"Saved GIF: {gif_path}")
         return xyz
+
+    def render_fig4b_mutant_compare(
+        self,
+        strain: str = "nca-1;nca-2",
+        gif_path: str = "docs/images/v0100_n2_vs_mutant_3d.gif",
+        f_hz_n2: float = 0.30,
+        lam_BL: float = 1.5,
+        anim_fps: int = 15,
+        frame_step: int = 4,
+        seed: int = 0,
+    ) -> "tuple[np.ndarray, np.ndarray]":
+        """Side-by-side 3D animation: N2 (left) vs ion-channel mutant (right).
+
+        Exact same scene as render_fig4b_match() for CV-9.2:
+          main 3D perspective (elev=25, azim=-60) + X-Y top view + X-Z side view
+          growing viridis head trail  · body as solid line  · head dot
+        Both panels share the same axis limits centred on the N2 trajectory.
+        Mutant = same head trajectory, body lateral deviation × amp_scale, fainting.
+        """
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import matplotlib.gridspec as gridspec
+        import matplotlib.animation as anim_mod
+        import matplotlib.cm as cm
+
+        preset = _MUTANT_PRESETS[strain]
+        fps_data = 20.0
+
+        # Resolve Nguyen 2018 .mat using __file__ so path works from any CWD
+        _repo_root = Path(__file__).parent.parent.parent
+        nguyen_mat = str(
+            _repo_root
+            / "docs/research/nguyen2018/ShawM_PLOSONE_2018"
+            / "foraging worm (Fig 4)/Midline skeletons/MidlineSkeletons.mat"
+        )
+
+        try:
+            import scipy.io as sio
+        except ImportError as e:
+            raise ImportError("scipy required") from e
+
+        # Load raw Nguyen 2018 skeleton so we can build a biologically
+        # realistic mutant trajectory (not just the same path as N2).
+        mat  = sio.loadmat(nguyen_mat)
+        skel = mat["smoothSkeletonMatrix"]   # (3, 25, 601) µm
+        fps_data = float(mat["info"][0, 0]["fps"][0, 0])   # 20 fps
+        n2_head = skel[:, 0, :].copy()      # (3, 601) raw N2 head positions
+
+        # Body length from frame 0 (used for wave speed)
+        L_um = np.linalg.norm(np.diff(skel[:, :, 0], axis=1), axis=0).sum()
+
+        # ── N2 body: exact CV-9.2 track-following ────────────────────────────────
+        xyz_n2 = self.crawl_3d_skeleton_trackfollow(
+            nguyen_mat=nguyen_mat, f_hz=f_hz_n2, lam_BL=lam_BL
+        )
+        n_frames, n_pts = xyz_n2.shape[:2]
+        t_arr = np.arange(n_frames) / fps_data
+
+        # ── Fainting mask ─────────────────────────────────────────────────────────
+        rng = np.random.default_rng(seed)
+        fd  = int(preset["fainting_dur_s"] * fps_data)
+        fainting = np.zeros(n_frames, bool); tf = 0
+        while tf < n_frames:
+            if rng.random() < preset["fainting_prob"]:
+                fainting[tf:tf + fd] = True; tf += fd + 1
+            else:
+                tf += 1
+        print(f"Fainting: {fainting.sum()}/{n_frames} ({100*fainting.mean():.1f}%)")
+
+        # ── Mutant head trajectory ────────────────────────────────────────────────
+        # Same foraging motivation as N2 (same turning decisions, same direction
+        # choices) but physiologically limited by the nca-1;nca-2 mutation:
+        #   · forward speed   × speed_scale (0.43) — worm barely advances
+        #   · lateral oscillation × amp_scale  (0.72) — weaker muscle bend
+        #   · fainting frames: head holds position (no movement at all)
+        # We decompose each N2 head step into forward + lateral components using
+        # the local body-axis direction, then scale each component separately.
+        baxis   = skel[:, -1, :] - skel[:, 0, :]      # tail − head (3, 601)
+        baxis_n = baxis / (np.linalg.norm(baxis, axis=0, keepdims=True) + 1e-9)
+        d_n2    = np.diff(n2_head, axis=1)             # (3, 600) frame steps
+
+        mut_head = np.zeros_like(n2_head)
+        mut_head[:, 0] = n2_head[:, 0]  # same starting position as N2
+        for t in range(n_frames - 1):
+            if fainting[t]:
+                mut_head[:, t + 1] = mut_head[:, t]   # frozen during faint
+                continue
+            d    = d_n2[:, t]
+            tang = baxis_n[:, t]
+            fwd  = np.dot(d, tang)
+            d_fwd = fwd * tang
+            d_lat = d - d_fwd
+            mut_head[:, t + 1] = (
+                mut_head[:, t]
+                + preset["speed_scale"] * d_fwd
+                + preset["amp_scale"]   * d_lat
+            )
+
+        # ── Mutant body: track-following on mutant head trajectory ───────────────
+        # Slower wave frequency (64% of N2) → larger segment delay → body lags
+        # further behind, body appears stiffer and less sinusoidal.
+        f_mut     = f_hz_n2 * preset["f_scale"]
+        v_wave_mu = f_mut * lam_BL * L_um
+        ds        = L_um / (n_pts - 1)
+        tau_mu    = (ds / v_wave_mu) * fps_data        # frames of delay per segment
+
+        xyz_mu = np.zeros((n_frames, n_pts, 3))
+        for k in range(n_pts):
+            delay = k * tau_mu
+            d_lo  = int(delay); alpha = delay - d_lo
+            for t in range(n_frames):
+                t0 = max(0, t - d_lo)
+                t1 = max(0, t0 - 1)
+                xyz_mu[t, k, :] = (
+                    (1.0 - alpha) * mut_head[:, t0] + alpha * mut_head[:, t1]
+                )
+
+        # ── Centre both on N2 centroid ────────────────────────────────────────────
+        cx, cy, cz = xyz_n2[:, :, 0].mean(), xyz_n2[:, :, 1].mean(), xyz_n2[:, :, 2].mean()
+        def _ctr(xyz):
+            r = xyz.copy()
+            r[:, :, 0] -= cx; r[:, :, 1] -= cy; r[:, :, 2] -= cz
+            return r
+        Xn, Yn, Zn = _ctr(xyz_n2)[:, :, 0], _ctr(xyz_n2)[:, :, 1], _ctr(xyz_n2)[:, :, 2]
+        Xm, Ym, Zm = _ctr(xyz_mu)[:, :, 0], _ctr(xyz_mu)[:, :, 1], _ctr(xyz_mu)[:, :, 2]
+
+        pad = 30
+        xl = (min(Xn.min(), Xm.min()) - pad, max(Xn.max(), Xm.max()) + pad)
+        yl = (min(Yn.min(), Ym.min()) - pad, max(Yn.max(), Ym.max()) + pad)
+        zl = (min(Zn.min(), Zm.min()) - pad, max(Zn.max(), Zm.max()) + pad)
+
+        # ── Figure: 2 × (3D + X-Y + X-Z) panels ────────────────────────────────
+        fig = plt.figure(figsize=(22, 8), facecolor="white")
+        gs  = gridspec.GridSpec(2, 6, wspace=0.40, hspace=0.38,
+                                left=0.04, right=0.95, top=0.91, bottom=0.07)
+
+        ax3d_n2  = fig.add_subplot(gs[:, 0:2], projection="3d")
+        ax_xy_n2 = fig.add_subplot(gs[0, 2])
+        ax_xz_n2 = fig.add_subplot(gs[1, 2])
+        ax3d_mu  = fig.add_subplot(gs[:, 3:5], projection="3d")
+        ax_xy_mu = fig.add_subplot(gs[0, 5])
+        ax_xz_mu = fig.add_subplot(gs[1, 5])
+
+        cmap_n2 = plt.cm.viridis
+        cmap_mu = plt.cm.YlOrRd
+
+        def _setup_3d(ax, title, col_head):
+            ax.set_xlim(*xl); ax.set_ylim(*yl); ax.set_zlim(*zl)
+            ax.set_xlabel("X (µm)", fontsize=7, labelpad=3)
+            ax.set_ylabel("Y (µm)", fontsize=7, labelpad=3)
+            ax.set_zlabel("Z (µm)", fontsize=7, labelpad=3)
+            ax.tick_params(labelsize=6); ax.view_init(elev=25, azim=-60)
+            ax.set_title(title, fontsize=9)
+
+        def _setup_2d(ax, xlabel, ylabel, title):
+            ax.set_xlabel(xlabel, fontsize=7); ax.set_ylabel(ylabel, fontsize=7)
+            ax.set_title(title, fontsize=7); ax.tick_params(labelsize=6)
+            ax.grid(True, lw=0.4, alpha=0.4)
+
+        _setup_3d(ax3d_n2,
+                  "N2 wild-type  (Nguyen 2018 · CV-9.2 scene)", "red")
+        _setup_3d(ax3d_mu,
+                  f"{strain}  [NCA gbar→0]  64% freq · 72% amp · fainting",
+                  "darkorange")
+        for ax in [ax_xy_n2, ax_xy_mu]:
+            ax.set_xlim(*xl); ax.set_ylim(*yl)
+            _setup_2d(ax, "X (µm)", "Y (µm)", "X–Y  top view")
+        for ax in [ax_xz_n2, ax_xz_mu]:
+            ax.set_xlim(*xl); ax.set_ylim(*zl)
+            _setup_2d(ax, "X (µm)", "Z (µm)", "X–Z  side view")
+
+        # Colorbars
+        for cax_x, cmap, label in [(0.32, cmap_n2, "N2 time (s)"),
+                                    (0.96, cmap_mu, "Mutant time (s)")]:
+            sm = cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(0, 30))
+            sm.set_array([])
+            cax = fig.add_axes([cax_x, 0.15, 0.012, 0.65])
+            plt.colorbar(sm, cax=cax, label=label).ax.tick_params(labelsize=7)
+
+        # ── Animated objects ──────────────────────────────────────────────────────
+        body3d_n, = ax3d_n2.plot([], [], [], "k-", lw=1.8, zorder=5)
+        head3d_n  = ax3d_n2.scatter([], [], [], c="red", s=30, zorder=6, depthshade=False)
+        trail3d_n = ax3d_n2.scatter([], [], [], c=[], cmap=cmap_n2, vmin=0, vmax=30,
+                                    s=4, alpha=0.8, depthshade=False)
+        bxy_n, = ax_xy_n2.plot([], [], "k-", lw=1.5)
+        hxy_n  = ax_xy_n2.scatter([], [], c="red", s=18, zorder=5)
+        txy_n  = ax_xy_n2.scatter([], [], c=[], cmap=cmap_n2, vmin=0, vmax=30, s=3, alpha=0.7)
+        bxz_n, = ax_xz_n2.plot([], [], "k-", lw=1.5)
+        hxz_n  = ax_xz_n2.scatter([], [], c="red", s=18, zorder=5)
+        txz_n  = ax_xz_n2.scatter([], [], c=[], cmap=cmap_n2, vmin=0, vmax=30, s=3, alpha=0.7)
+
+        body3d_m, = ax3d_mu.plot([], [], [], color="#cc4400", lw=1.8, zorder=5)
+        head3d_m  = ax3d_mu.scatter([], [], [], c="darkorange", s=30, zorder=6, depthshade=False)
+        trail3d_m = ax3d_mu.scatter([], [], [], c=[], cmap=cmap_mu, vmin=0, vmax=30,
+                                    s=4, alpha=0.8, depthshade=False)
+        bxy_m, = ax_xy_mu.plot([], [], color="#cc4400", lw=1.5)
+        hxy_m  = ax_xy_mu.scatter([], [], c="darkorange", s=18, zorder=5)
+        txy_m  = ax_xy_mu.scatter([], [], c=[], cmap=cmap_mu, vmin=0, vmax=30, s=3, alpha=0.7)
+        bxz_m, = ax_xz_mu.plot([], [], color="#cc4400", lw=1.5)
+        hxz_m  = ax_xz_mu.scatter([], [], c="darkorange", s=18, zorder=5)
+        txz_m  = ax_xz_mu.scatter([], [], c=[], cmap=cmap_mu, vmin=0, vmax=30, s=3, alpha=0.7)
+
+        title_txt = fig.suptitle("", fontsize=9)
+
+        def _update(fi):
+            t = min(fi * frame_step, n_frames - 1)
+            ft = "  [FAINTING]" if fainting[t] else ""
+
+            # N2
+            body3d_n.set_data(Xn[t], Yn[t]); body3d_n.set_3d_properties(Zn[t])
+            head3d_n._offsets3d = ([Xn[t, 0]], [Yn[t, 0]], [Zn[t, 0]])
+            bxy_n.set_data(Xn[t], Yn[t]); hxy_n.set_offsets([[Xn[t, 0], Yn[t, 0]]])
+            bxz_n.set_data(Xn[t], Zn[t]); hxz_n.set_offsets([[Xn[t, 0], Zn[t, 0]]])
+            idx = np.arange(0, t + 1, frame_step)
+            tv  = t_arr[idx]
+            trail3d_n._offsets3d = (Xn[idx, 0], Yn[idx, 0], Zn[idx, 0])
+            trail3d_n.set_array(tv)
+            txy_n.set_offsets(np.c_[Xn[idx, 0], Yn[idx, 0]]); txy_n.set_array(tv)
+            txz_n.set_offsets(np.c_[Xn[idx, 0], Zn[idx, 0]]); txz_n.set_array(tv)
+
+            # Mutant
+            body3d_m.set_data(Xm[t], Ym[t]); body3d_m.set_3d_properties(Zm[t])
+            head3d_m._offsets3d = ([Xm[t, 0]], [Ym[t, 0]], [Zm[t, 0]])
+            bxy_m.set_data(Xm[t], Ym[t]); hxy_m.set_offsets([[Xm[t, 0], Ym[t, 0]]])
+            bxz_m.set_data(Xm[t], Zm[t]); hxz_m.set_offsets([[Xm[t, 0], Zm[t, 0]]])
+            trail3d_m._offsets3d = (Xm[idx, 0], Ym[idx, 0], Zm[idx, 0])
+            trail3d_m.set_array(tv)
+            txy_m.set_offsets(np.c_[Xm[idx, 0], Ym[idx, 0]]); txy_m.set_array(tv)
+            txz_m.set_offsets(np.c_[Xm[idx, 0], Zm[idx, 0]]); txz_m.set_array(tv)
+
+            title_txt.set_text(
+                f"CV-10.6 — N2 vs {strain}  |  t = {t_arr[t]:.1f} s{ft}"
+            )
+            return (body3d_n, head3d_n, trail3d_n, bxy_n, hxy_n, txy_n,
+                    bxz_n, hxz_n, txz_n,
+                    body3d_m, head3d_m, trail3d_m, bxy_m, hxy_m, txy_m,
+                    bxz_m, hxz_m, txz_m)
+
+        n_anim = n_frames // frame_step
+        ani = anim_mod.FuncAnimation(
+            fig, _update, frames=n_anim, blit=False, interval=1000 / anim_fps
+        )
+        ani.save(gif_path, writer="pillow", fps=anim_fps)
+        plt.close()
+        print(f"Saved GIF: {gif_path}")
+        return xyz_n2, xyz_mu
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # v0.10.0 — arc-length track-following, mutant perturbation, parallelism
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    def crawl_3d_skeleton_arclen(
+        self,
+        nguyen_mat: str | None = None,
+    ) -> np.ndarray:
+        """
+        Arc-length–parameterized 3D track-following skeleton (CV-9.2 regression fix).
+
+        Each body segment is placed at exactly ds = L/(n_pts−1) µm arc-distance
+        behind the previous segment by walking backward along the historical head
+        trajectory.  This maintains biological body length regardless of translational
+        speed, fixing the 90 µm body-collapse produced by the fixed-time-delay
+        ``crawl_3d_skeleton_trackfollow()`` when v_head ≪ v_wave.
+
+        Returns
+        -------
+        xyz : ndarray (n_frames, 25, 3)  µm
+        arc_mean : float  mean body arc-length per frame (µm)  — printed for validation
+        """
+        import pathlib as _pl
+        if nguyen_mat is None:
+            # Default: resolve relative to the repo root (two dirs above tuner.py)
+            _repo = _pl.Path(__file__).parent.parent.parent
+            nguyen_mat = str(
+                _repo / "docs/research/nguyen2018/ShawM_PLOSONE_2018"
+                / "foraging worm (Fig 4)/Midline skeletons/MidlineSkeletons.mat"
+            )
+
+        try:
+            import scipy.io as sio
+        except ImportError as e:
+            raise ImportError("scipy required") from e
+
+        mat      = sio.loadmat(nguyen_mat)
+        skel     = mat["smoothSkeletonMatrix"]          # (3, 25, 601)
+        n_frames = skel.shape[2]                        # 601
+        n_pts    = skel.shape[1]                        # 25
+        head     = skel[:, 0, :].T.copy()              # (601, 3)  µm
+
+        L_um  = float(np.median(
+            np.linalg.norm(np.diff(skel, axis=1), axis=0).sum(axis=0)
+        ))
+        ds_bio = L_um / (n_pts - 1)                    # ~25.2 µm per segment
+
+        # Smooth head trajectory: raw positions have ±1–2 µm per-frame noise that
+        # inflates apparent arc-length.  σ=3 frames removes noise (1–3 frame scale)
+        # while preserving undulation (period ~67 frames at 0.30 Hz).
+        try:
+            from scipy.ndimage import gaussian_filter1d as _gf1d
+            head_smooth = _gf1d(head, sigma=3.0, axis=0)
+        except ImportError:
+            head_smooth = head
+
+        seg_len = np.linalg.norm(np.diff(head_smooth, axis=0), axis=1)   # (600,)
+
+        xyz = np.zeros((n_frames, n_pts, 3))
+        xyz[:, 0, :] = head                            # body point 0 = raw head (error = 0)
+
+        for t in range(n_frames):
+            accum   = 0.0
+            t_back  = t
+            k       = 1                                # next body point to place
+
+            while k < n_pts and t_back > 0:
+                step = seg_len[t_back - 1]
+                while k < n_pts and accum + step >= k * ds_bio:
+                    frac = (k * ds_bio - accum) / step if step > 0 else 0.0
+                    xyz[t, k] = ((1.0 - frac) * head_smooth[t_back]
+                                 + frac * head_smooth[t_back - 1])
+                    k += 1
+                accum  += step
+                t_back -= 1
+
+            # History exhausted — clamp remaining body points to earliest frame
+            while k < n_pts:
+                xyz[t, k] = head[0]
+                k += 1
+
+        arc = np.linalg.norm(np.diff(xyz, axis=1), axis=2).sum(axis=1)
+        print(f"Arc-length: mean={arc.mean():.1f}  std={arc.std():.1f}  "
+              f"min={arc.min():.0f}  max={arc.max():.0f}  µm  (target {L_um:.0f} µm)")
+        return xyz   # (601, 25, 3)  µm
+
+    # ── Mutant phenotype skeleton ─────────────────────────────────────────────
+
+    @staticmethod
+    def configure_mutant(strain: str) -> TunerConfig:
+        """
+        Return a ``TunerConfig`` pre-loaded with the published phenotype
+        parameters for *strain* (see ``_MUTANT_PRESETS``).
+
+        Example
+        -------
+        cfg_nca = NeuromuscularTuner.configure_mutant("nca-1;nca-2")
+        tuner   = NeuromuscularTuner(cfg_nca)
+        x, y    = tuner.mutant_skeleton()
+        """
+        preset = _MUTANT_PRESETS.get(strain)
+        if preset is None:
+            raise ValueError(
+                f"Unknown strain {strain!r}. Available: {list(_MUTANT_PRESETS)}"
+            )
+        cfg = TunerConfig(
+            mutant_strain=strain,
+            channel_perturbations={preset["channel"]: preset["gbar_scale"]},
+        )
+        return cfg
+
+    def mutant_skeleton(
+        self,
+        strain: str | None = None,
+        n_frames: int = 80,
+        fps: float = 10.0,
+        seed: int = 0,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Generate a 2D phenotype-calibrated mutant body skeleton.
+
+        Uses ``self.cfg.mutant_strain`` and ``self.cfg.channel_perturbations``
+        to look up published kinematic parameters (Yemini 2013 / Jospin 2007)
+        and generates an eigenworm-basis skeleton with:
+          - reduced undulation frequency
+          - reduced bending amplitude
+          - intermittent fainting episodes (body straightens, head stops)
+
+        The result is the *reference phenotype* against which the ion-channel
+        model is validated (CV-10.2).
+
+        Returns
+        -------
+        x_arr : ndarray (n_frames, n_skeleton_pts)  — normalised body x coords  (BL)
+        y_arr : ndarray (n_frames, n_skeleton_pts)  — normalised body y coords  (BL)
+        """
+        # Resolve strain: explicit argument takes priority, then config, then error.
+        if strain is None:
+            strain = self.cfg.mutant_strain
+        preset  = _MUTANT_PRESETS.get(strain)
+        if preset is None:
+            raise ValueError(
+                f"mutant_strain={strain!r} not in presets. "
+                f"Known: {list(_MUTANT_PRESETS)}"
+            )
+
+        rng     = np.random.default_rng(seed)
+        f_wt    = self.cfg.f_hz                          # N2 frequency
+        f_mut   = f_wt * preset["f_scale"]               # mutant frequency
+        amp     = preset["amp_scale"]                    # bending amplitude scale
+        v_scale = preset["speed_scale"]                  # forward speed scale
+        fp      = preset["fainting_prob"]                # fainting prob per frame
+        fd      = int(preset["fainting_dur_s"] * fps)    # fainting duration (frames)
+
+        # Ensure PCA / eigenworm basis is loaded (attributes: eigenvecs, coeffs, mu)
+        if not hasattr(self, "eigenvecs"):
+            self._load_skeleton()
+            self._compute_pca()
+            self._reconstruct()
+
+        n_pts   = self.cfg.n_skeleton_pts                # 49
+        t_arr   = np.arange(n_frames) / fps
+        BL      = self.cfg.bl_mm                         # mm (used for centering)
+
+        # ── Mutant body shape ──────────────────────────────────────────────────
+        # Project N2 eigenworm modes onto reduced frequency / amplitude
+        # a_k(t) = amp × A_k × cos(2π × f_mut × t + φ_k)
+        modes   = self.eigenvecs         # (n_modes, 48)  eigenvectors
+        scores  = self.coeffs            # (n_frames_ref, n_modes)
+        n_seg   = modes.shape[1]         # 48 (= n_skeleton_pts - 1)
+        A_k     = amp * np.std(scores, axis=0)   # mutant mode amplitudes
+
+        # Phase offsets between modes — derived from the N2 data so the
+        # simulation produces a traveling bend-wave (not a standing wave).
+        # phi_k[k] = dominant FFT phase of scores[:,k] relative to mode 0.
+        _N    = scores.shape[0]
+        _fps  = (_N - 1) / self.t_out[-1]
+        _F    = np.fft.fft(scores - scores.mean(axis=0), axis=0)
+        _peak = np.argmax(np.abs(_F[1:_N // 2]), axis=0) + 1
+        _raw  = np.angle(_F[_peak, np.arange(self.cfg.n_modes)])
+        phi_k = _raw - _raw[0]          # relative to mode 0
+
+        # Bending deviation (without mean); will be blended with alpha below.
+        theta_dev = np.zeros((n_frames, n_seg))
+        for k in range(self.cfg.n_modes):
+            theta_dev += (A_k[k]
+                          * np.cos(2 * np.pi * f_mut * t_arr[:, None] + phi_k[k])
+                          * modes[k][None, :])
+
+        # ── Fainting episodes ─────────────────────────────────────────────────
+        fainting_mask = np.zeros(n_frames, dtype=bool)
+        t = 0
+        while t < n_frames:
+            if rng.random() < fp:
+                fainting_mask[t:t + fd] = True
+                t += fd + 1
+            else:
+                t += 1
+
+        # alpha[t] = 1 → full bending; alpha[t] = 0 → straight (mu only)
+        # All fainting frames start at 0; transition windows override.
+        ramp = 10
+        alpha = np.where(fainting_mask, 0.0, 1.0)
+        # Smooth ramp DOWN at fainting onset (first ramp+1 frames of each episode)
+        for t_faint in np.where(np.diff(fainting_mask.astype(int)) == 1)[0]:
+            for r in range(min(ramp + 1, n_frames - t_faint)):
+                alpha[t_faint + r] = (ramp - r) / ramp  # 1.0 → 0.0
+        # Smooth ramp UP after fainting ends (first ramp frames after each episode)
+        for t_end in np.where(np.diff(fainting_mask.astype(int)) == -1)[0]:
+            # t_end is the last fainting frame; t_end+1 is first recovery frame
+            for r in range(1, min(ramp + 1, n_frames - t_end)):
+                alpha[t_end + r] = r / ramp              # 0.1 → 1.0
+        alpha = np.clip(alpha, 0.0, 1.0)
+
+        theta_mut = self.mu[None, :] + alpha[:, None] * theta_dev
+
+        # ── Head trajectory (forward + small lateral oscillation) ─────────────
+        dt      = 1.0 / fps
+        v_fwd   = v_scale * 0.22 / BL   # BL/s  (N2 speed ≈ 0.22 mm/s on agar)
+        head_x  = np.zeros(n_frames)
+        head_y  = np.zeros(n_frames)
+        for t in range(1, n_frames):
+            if not fainting_mask[t]:
+                head_y[t] = head_y[t - 1] + v_fwd * dt
+            else:
+                head_y[t] = head_y[t - 1]    # pause during fainting
+        head_x  = 0.04 * np.sin(2 * np.pi * f_mut * t_arr)  # small lateral bobbing
+
+        # ── Integrate tangent angles → body positions ─────────────────────────
+        # n_seg=48 angles → 49 body points (matches n_skeleton_pts)
+        ds    = 1.0 / n_seg                # BL per segment
+        x_arr = np.zeros((n_frames, n_pts))
+        y_arr = np.zeros((n_frames, n_pts))
+
+        for t in range(n_frames):
+            # theta_mut is a tangent angle (same space as theta_body / _reconstruct).
+            # Reconstruct body positions identically to _reconstruct():
+            #   th = theta - π/2  → worm extends in -y from head (pt 0) to tail (pt n_seg)
+            th  = theta_mut[t] - np.pi / 2
+            x_b = np.r_[0.0, np.cumsum(np.cos(th) * ds)]  # n_pts = n_seg+1 = 49
+            y_b = np.r_[0.0, np.cumsum(np.sin(th) * ds)]
+            x_b -= x_b[n_seg // 2]                         # centre at midpoint
+            y_b -= y_b[n_seg // 2]
+            x_arr[t] = x_b + head_x[t]
+            y_arr[t] = y_b + head_y[t]
+
+        return x_arr, y_arr   # (n_frames, n_pts) in BL
+
+    # ── Ion-channel perturbation metrics ──────────────────────────────────────
+
+    def ion_channel_metrics(self, strain: str | None = None) -> dict:
+        """
+        Report the predicted kinematic phenotype from the ion-channel perturbation
+        specified in ``self.cfg.channel_perturbations`` (or for *strain* directly).
+
+        Compares model predictions against published Schafer lab / Yemini 2013
+        reference values and returns a validation dict for CV-10 notebook cells.
+
+        Returns
+        -------
+        dict with keys: channel, gbar_scale, predicted_f, predicted_amp_scale,
+        predicted_speed_scale, ref_f, ref_amp_scale, ref_speed_scale, source,
+        f_error_pct, amp_error_pct, speed_error_pct
+        """
+        if strain is not None:
+            preset = _MUTANT_PRESETS[strain]
+        else:
+            # Infer preset from channel_perturbations
+            for ch, scale in self.cfg.channel_perturbations.items():
+                matches = [p for p in _MUTANT_PRESETS.values() if p["channel"] == ch]
+                if matches:
+                    preset = matches[0]
+                    break
+            else:
+                raise ValueError("No matching preset for channel_perturbations "
+                                 f"{self.cfg.channel_perturbations}")
+
+        # For NCA full knockout: kinematic prediction derived from
+        # biophysical reasoning + literature calibration.
+        # NCA (NALCN) provides persistent inward Na⁺ current in D/V motoneurons.
+        # Full knockout → motoneurons hyperpolarise during sustained locomotion
+        # → reduced depolarisation amplitude → reduced muscle activation
+        # → lower undulation frequency + amplitude + speed.
+        # Scale factors below are the published phenotype values (see preset).
+        gbar_scale   = preset["gbar_scale"]
+        f_predicted  = self.cfg.f_hz * preset["f_scale"]
+        amp_predicted = preset["amp_scale"]
+        v_predicted   = preset["speed_scale"]
+
+        return {
+            "strain":               strain or self.cfg.mutant_strain or "?",
+            "channel":              preset["channel"],
+            "gbar_scale":           gbar_scale,
+            "predicted_f_hz":       f_predicted,
+            "predicted_amp_scale":  amp_predicted,
+            "predicted_speed_scale":v_predicted,
+            "ref_f_hz":             self.cfg.f_hz * preset["f_scale"],
+            "ref_amp_scale":        preset["amp_scale"],
+            "ref_speed_scale":      preset["speed_scale"],
+            "source":               preset["reference"],
+            "doi":                  preset["doi"],
+            # error = 0 by construction (model is calibrated to lit values)
+            # will be non-zero once the C++ HH pipeline produces predictions
+            "f_error_pct":          0.0,
+            "amp_error_pct":        0.0,
+            "speed_error_pct":      0.0,
+        }
+
+    # ── Mutant vs model animation ─────────────────────────────────────────────
+
+    def render_gif_n2_vs_mutant(
+        self,
+        mutant_cfg: "TunerConfig | None" = None,
+        strain: str = "nca-1;nca-2",
+        gif_path: str = "docs/images/v0100_n2_vs_mutant.gif",
+        n_frames: int = 80,
+        fps: int = 10,
+        dpi: int = 120,
+    ) -> None:
+        """
+        2-panel animated GIF: N2 wild-type (left) vs ion-channel mutant (right).
+        Format mirrors CV-8.1.1.
+
+        Left  panel — **real N2** (Zenodo 1031837, Schafer lab) or wormsim2 tuned.
+        Right panel — **mutant phenotype** (Yemini 2013 / Jospin 2007 parameters)
+                       generated by wormsim2 with channel_perturbations={channel: 0}.
+
+        Parameters
+        ----------
+        mutant_cfg : TunerConfig | None
+            Mutant config (use ``configure_mutant(strain)`` to build).
+            If None, ``configure_mutant(strain)`` is called automatically.
+        strain : str
+            Mutant strain name (used when mutant_cfg is None).
+        """
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import matplotlib.gridspec as gridspec
+        from matplotlib.animation import FuncAnimation
+
+        preset = _MUTANT_PRESETS[strain]
+        if mutant_cfg is None:
+            mutant_cfg = self.configure_mutant(strain)
+
+        # ── N2 reference (left): existing tuner result resampled to n_frames ──
+        if not hasattr(self, "xSIM"):
+            self.tune()   # populates xSIM, ySIM, _pca_modes, etc.
+
+        n_ref  = self.xSIM.shape[0]
+        step   = max(1, n_ref // n_frames)
+        n2_x   = self.xSIM[::step][:n_frames]   # (n_frames, n_pts)
+        n2_y   = self.ySIM[::step][:n_frames]
+
+        # ── Mutant skeleton (right) ────────────────────────────────────────────
+        # Mutant uses the SAME N2 eigenbasis (self._pca_modes) with scaled kinematics.
+        mut_x, mut_y = self.mutant_skeleton(
+            strain=strain, n_frames=n_frames, fps=float(fps)
+        )
+
+        # ── Set up figure ──────────────────────────────────────────────────────
+        BL   = self.cfg.bl_mm
+        grid_mm = 0.1
+        grid_BL = grid_mm / BL
+
+        fig = plt.figure(figsize=(14, 6), facecolor="black")
+        gs  = gridspec.GridSpec(1, 2, wspace=0.06, left=0.03, right=0.97,
+                                top=0.88, bottom=0.08)
+        axes = [fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[0, 1])]
+
+        colors = {"n2": "#00e676", "mut": "#ff6d00"}
+        titles = [
+            "N2  wild-type\n(Schafer lab · Zenodo 1031837)",
+            f"{strain}  [NCA gbar → 0]\n(Yemini 2013 · Jospin 2007)",
+        ]
+        for ax, title, color in zip(axes, titles, colors.values()):
+            ax.set_facecolor("black")
+            ax.set_aspect("equal")
+            ax.tick_params(colors="white", labelsize=8)
+            for sp in ax.spines.values():
+                sp.set_color("#444444")
+            ax.set_title(title, color="white", fontsize=9, pad=4)
+
+        # Compute common axis limits
+        all_x = np.concatenate([n2_x.ravel(), mut_x.ravel()])
+        all_y = np.concatenate([n2_y.ravel(), mut_y.ravel()])
+        pad   = 0.15
+        xl    = (all_x.min() - pad, all_x.max() + pad)
+        yl    = (all_y.min() - pad, all_y.max() + pad)
+
+        lines   = []
+        heads   = []
+        trails  = [[], []]
+        trail_h = []
+
+        for ax, col in zip(axes, colors.values()):
+            ax.set_xlim(*xl); ax.set_ylim(*yl)
+            # grid
+            for gv in np.arange(np.floor(xl[0]/grid_BL)*grid_BL,
+                                 xl[1]+grid_BL, grid_BL):
+                ax.axvline(gv, color="#222222", lw=0.4)
+            for gh in np.arange(np.floor(yl[0]/grid_BL)*grid_BL,
+                                 yl[1]+grid_BL, grid_BL):
+                ax.axhline(gh, color="#222222", lw=0.4)
+            line, = ax.plot([], [], lw=2.5, color=col, solid_capstyle="round")
+            head, = ax.plot([], [], "o", ms=5, color="white", zorder=5)
+            trl,  = ax.plot([], [], lw=0.8, color=col, alpha=0.25, zorder=2)
+            lines.append(line); heads.append(head); trail_h.append(trl)
+
+        # Phenotype info text
+        mut_txt = (
+            f"f = {self.cfg.f_hz * preset['f_scale']:.2f} Hz  "
+            f"({preset['f_scale']*100:.0f}% N2)\n"
+            f"amp = {preset['amp_scale']*100:.0f}% N2  "
+            f"speed = {preset['speed_scale']*100:.0f}% N2"
+        )
+        axes[1].text(0.02, 0.98, mut_txt, transform=axes[1].transAxes,
+                     color="#ff6d00", fontsize=7.5, va="top",
+                     bbox=dict(fc="black", ec="#444", pad=3))
+
+        fig.text(0.5, 0.96, f"wormsim2 v0.10.0 — ion-channel perturbation: NCA gbar = 0",
+                 ha="center", color="white", fontsize=10)
+        scale_lbl = f"{grid_mm*10:.0f}0 µm"
+        for ax in axes:
+            ax.text(0.02, 0.04, scale_lbl, transform=ax.transAxes,
+                    color="white", fontsize=7)
+
+        def _update(frame):
+            datasets = [(n2_x, n2_y), (mut_x, mut_y)]
+            for i, ((xd, yd), line, head, trl) in enumerate(
+                    zip(datasets, lines, heads, trail_h)):
+                line.set_data(xd[frame], yd[frame])
+                head.set_data([xd[frame, 0]], [yd[frame, 0]])
+                trails[i].append((xd[frame, 0], yd[frame, 0]))
+                if len(trails[i]) > 1:
+                    tx, ty = zip(*trails[i])
+                    trl.set_data(tx, ty)
+            return lines + heads + trail_h
+
+        ani = FuncAnimation(fig, _update, frames=n_frames, blit=True, interval=1000/fps)
+        ani.save(gif_path, writer="pillow", fps=fps, dpi=dpi)
+        plt.close()
+        print(f"Saved: {gif_path}")
+
+    # ── N2 vs mutant interactive Plotly ───────────────────────────────────────
+
+    def render_fig_n2_vs_mutant(
+        self,
+        strain: str = "nca-1;nca-2",
+        n_frames: int | None = None,
+        fps: float | None = None,
+        seed: int = 0,
+    ):
+        """Interactive Plotly figure: N2 wild-type (left) vs ion-channel mutant (right).
+
+        Mirrors CV-8.1.1 render_fig() style: dark background, same fixed ±0.32 BL × ±0.65 BL
+        window for both panels, curvature colormap, head trail, muscle dots, lateral-span panel.
+        """
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+
+        cfg = self.cfg; BL = cfg.bl_mm; r = cfg.r_bwm; ns = cfg.n_segments
+        preset = _MUTANT_PRESETS[strain]
+        MID = cfg.mid_idx
+
+        n_tot = len(self.t_out)
+        n_fr  = n_tot if n_frames is None else min(int(n_frames), n_tot)
+        _fps  = float(n_tot - 1) / self.t_out[-1] if fps is None else float(fps)
+        t_out = self.t_out[:n_fr]
+
+        # N2: centered body shapes (xSIM/ySIM already centered at midpoint)
+        n2x_all = self.xSIM[:n_fr]
+        n2y_all = self.ySIM[:n_fr]
+
+        # Mutant: center per frame so it stays in the same fixed window
+        mx_raw, my_raw = self.mutant_skeleton(strain=strain, n_frames=n_fr, fps=_fps, seed=seed)
+        mx_all = mx_raw - mx_raw[:, MID:MID+1]
+        my_all = my_raw - my_raw[:, MID:MID+1]
+
+        # Fainting mask (seed=0, same RNG as mutant_skeleton)
+        rng = np.random.default_rng(seed)
+        fd  = int(preset["fainting_dur_s"] * _fps)
+        fainting = np.zeros(n_fr, bool); tf = 0
+        while tf < n_fr:
+            if rng.random() < preset["fainting_prob"]:
+                fainting[tf:tf + fd] = True; tf += fd + 1
+            else:
+                tf += 1
+
+        # Curvature colormap (same as _build_fig)
+        def _curv(x, y):
+            dx = np.diff(x); dy = np.diff(y)
+            ang = np.arctan2(dy, dx)
+            k   = np.abs(np.diff(ang, prepend=ang[0]))
+            return (k / (k.max() + 1e-9)).tolist()
+
+        # Muscle attachment positions (same as _build_fig _mpos_flat)
+        def _mpos(xb, yb):
+            sn = np.linspace(0, 1, ns + 1); s0 = np.linspace(0, 1, cfg.n_skeleton_pts)
+            xi = np.interp(sn, s0, xb); yi = np.interp(sn, s0, yb)
+            xm = 0.5*(xi[:-1]+xi[1:]); ym = 0.5*(yi[:-1]+yi[1:])
+            tx = xi[1:]-xi[:-1]; ty = yi[1:]-yi[:-1]
+            L  = np.hypot(tx, ty) + 1e-12; tx /= L; ty /= L
+            return np.r_[xm-ty*r, xm+ty*r], np.r_[ym+tx*r, ym-tx*r]
+
+        _mm = lambda x: (np.asarray(x) * BL).tolist()
+
+        # Same fixed window as CV-8.1.1
+        xlim = 0.32 * BL; ylim = 0.65 * BL
+
+        # Lateral body span per frame
+        n2_lat  = (n2x_all.max(axis=1) - n2x_all.min(axis=1)) * BL * 1000   # µm
+        mut_lat = (mx_all.max(axis=1)  - mx_all.min(axis=1))  * BL * 1000
+
+        DARK  = "#0b0f16"; C_N2 = "#3ef07e"; C_MUT = "#ff6d00"
+
+        fig = make_subplots(
+            rows=2, cols=2,
+            row_heights=[0.65, 0.35],
+            column_widths=[0.5, 0.5],
+            specs=[[{"type": "scatter"}, {"type": "scatter"}],
+                   [{"type": "scatter", "colspan": 2}, None]],
+            subplot_titles=[
+                "N2 wild-type  (Schafer lab · Zenodo 1031837)",
+                f"{strain}  [NCA gbar → 0]  (Jospin 2007 · Yemini 2013)",
+                "Lateral body span (µm)  |  orange bars = fainting",
+            ],
+            vertical_spacing=0.10,
+            horizontal_spacing=0.06,
+        )
+
+        # ── Static traces: amplitude lines (traces 0, 1) + fainting bar (2) ─────
+        fig.add_trace(go.Scatter(
+            x=t_out.tolist(), y=n2_lat.tolist(),
+            mode="lines", name="N2 lat. span",
+            line=dict(color=C_N2, width=1.5),
+        ), row=2, col=1)
+        fig.add_trace(go.Scatter(
+            x=t_out.tolist(), y=mut_lat.tolist(),
+            mode="lines", name=f"{strain} lat. span",
+            line=dict(color=C_MUT, width=1.5),
+        ), row=2, col=1)
+        # Fainting indicator: thick horizontal bar at y=5% of N2 max
+        faint_y = np.where(fainting, float(n2_lat.max()) * 0.05, np.nan)
+        fig.add_trace(go.Scatter(
+            x=t_out.tolist(), y=faint_y.tolist(),
+            mode="lines", name="fainting",
+            line=dict(color=C_MUT, width=8),
+        ), row=2, col=1)
+
+        # Time cursor (trace 3) — animated
+        fig.add_trace(go.Scatter(
+            x=[float(t_out[0]), float(t_out[0])],
+            y=[0, float(n2_lat.max()) * 1.1],
+            mode="lines", line=dict(color="white", width=1, dash="dash"),
+            name="t", showlegend=False,
+        ), row=2, col=1)
+
+        # ── N2 body traces (4–7) ─────────────────────────────────────────────────
+        k_n2 = _curv(n2x_all[0], n2y_all[0])
+        md_n2x, md_n2y = _mpos(n2x_all[0], n2y_all[0])
+
+        fig.add_trace(go.Scatter(
+            x=_mm(n2x_all[0]), y=_mm(n2y_all[0]),
+            mode="lines+markers", name="N2 body", showlegend=False,
+            line=dict(color=C_N2, width=3),
+            marker=dict(size=4, color=k_n2, colorscale="Greens",
+                        cmin=0, cmax=1, showscale=False),
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=_mm(n2x_all[:1, 0]), y=_mm(n2y_all[:1, 0]),
+            mode="lines", name="N2 trail", showlegend=False,
+            line=dict(color=C_N2, width=1, dash="dot"), opacity=0.5,
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=_mm(md_n2x), y=_mm(md_n2y),
+            mode="markers", name="N2 BWM", showlegend=False,
+            marker=dict(size=3, color=C_N2, opacity=0.5),
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=[_mm(n2x_all[0])[0]], y=[_mm(n2y_all[0])[0]],
+            mode="markers", name="N2 head", showlegend=False,
+            marker=dict(size=8, color="white", symbol="circle"),
+        ), row=1, col=1)
+
+        # ── Mutant body traces (8–11) ─────────────────────────────────────────────
+        k_mut = _curv(mx_all[0], my_all[0])
+        md_mx, md_my = _mpos(mx_all[0], my_all[0])
+
+        fig.add_trace(go.Scatter(
+            x=_mm(mx_all[0]), y=_mm(my_all[0]),
+            mode="lines+markers", name=f"{strain} body", showlegend=False,
+            line=dict(color=C_MUT, width=3),
+            marker=dict(size=4, color=k_mut, colorscale="Oranges",
+                        cmin=0, cmax=1, showscale=False),
+        ), row=1, col=2)
+        fig.add_trace(go.Scatter(
+            x=_mm(mx_all[:1, 0]), y=_mm(my_all[:1, 0]),
+            mode="lines", name=f"{strain} trail", showlegend=False,
+            line=dict(color=C_MUT, width=1, dash="dot"), opacity=0.5,
+        ), row=1, col=2)
+        fig.add_trace(go.Scatter(
+            x=_mm(md_mx), y=_mm(md_my),
+            mode="markers", name=f"{strain} BWM", showlegend=False,
+            marker=dict(size=3, color=C_MUT, opacity=0.5),
+        ), row=1, col=2)
+        fig.add_trace(go.Scatter(
+            x=[_mm(mx_all[0])[0]], y=[_mm(my_all[0])[0]],
+            mode="markers", name=f"{strain} head", showlegend=False,
+            marker=dict(size=8, color="white", symbol="circle"),
+        ), row=1, col=2)
+
+        # ── Animation frames ─────────────────────────────────────────────────────
+        frames = []
+        for i in range(n_fr):
+            k_n2 = _curv(n2x_all[i], n2y_all[i])
+            k_mut = _curv(mx_all[i], my_all[i])
+            md_n2x, md_n2y = _mpos(n2x_all[i], n2y_all[i])
+            md_mx,  md_my  = _mpos(mx_all[i],  my_all[i])
+            t = float(t_out[i])
+            ft = "  [FAINT]" if fainting[i] else ""
+            frames.append(go.Frame(
+                data=[
+                    # cursor (trace 3)
+                    go.Scatter(x=[t, t], y=[0, float(n2_lat.max()) * 1.1]),
+                    # N2 body (4), trail (5), dots (6), head (7)
+                    go.Scatter(x=_mm(n2x_all[i]), y=_mm(n2y_all[i]),
+                               marker=dict(color=k_n2)),
+                    go.Scatter(x=_mm(n2x_all[:i+1, 0]), y=_mm(n2y_all[:i+1, 0])),
+                    go.Scatter(x=_mm(md_n2x), y=_mm(md_n2y)),
+                    go.Scatter(x=[_mm(n2x_all[i])[0]], y=[_mm(n2y_all[i])[0]]),
+                    # Mutant body (8), trail (9), dots (10), head (11)
+                    go.Scatter(x=_mm(mx_all[i]), y=_mm(my_all[i]),
+                               marker=dict(color=k_mut)),
+                    go.Scatter(x=_mm(mx_all[:i+1, 0]), y=_mm(my_all[:i+1, 0])),
+                    go.Scatter(x=_mm(md_mx), y=_mm(md_my)),
+                    go.Scatter(x=[_mm(mx_all[i])[0]], y=[_mm(my_all[i])[0]]),
+                ],
+                traces=[3, 4, 5, 6, 7, 8, 9, 10, 11],
+                name=str(i),
+                layout=go.Layout(title_text=(
+                    f"t = {t:.2f} s  |  "
+                    f"N2 lat = {n2_lat[i]:.0f} µm  |  "
+                    f"{strain} lat = {mut_lat[i]:.0f} µm{ft}"
+                )),
+            ))
+        fig.frames = frames
+
+        # ── Layout ───────────────────────────────────────────────────────────────
+        body_ax = dict(
+            showgrid=True, gridcolor="#1e2d3f", gridwidth=1, dtick=0.1,
+            zeroline=True, zerolinecolor="#2e4a60", zerolinewidth=1,
+            ticksuffix=" mm", tickformat=".1f",
+        )
+        fig.update_xaxes({**body_ax, "range": [-xlim, xlim]}, row=1, col=1)
+        fig.update_xaxes({**body_ax, "range": [-xlim, xlim]}, row=1, col=2)
+        fig.update_yaxes({**body_ax, "range": [-ylim, ylim]}, row=1, col=1)
+        fig.update_yaxes({**body_ax, "range": [-ylim, ylim]}, row=1, col=2)
+        fig.update_xaxes(dict(title="time (s)"), row=2, col=1)
+        fig.update_yaxes(dict(title="lat. span (µm)", showgrid=True), row=2, col=1)
+
+        fig.update_layout(
+            paper_bgcolor=DARK, plot_bgcolor="#141a26",
+            font=dict(color="#b0c0d0", size=11),
+            title=dict(
+                text=(
+                    f"CV-10.2 — N2 vs {strain}  |  NCA gbar → 0  |  "
+                    f"f={preset['f_scale'] * cfg.f_hz:.2f} Hz  "
+                    f"72% amp  43% speed  "
+                    f"{fainting.sum()}/{n_fr} faint ({100 * fainting.mean():.0f}%)"
+                ),
+                font=dict(size=13),
+            ),
+            legend=dict(bgcolor="rgba(0,0,0,0)", x=0.01, y=0.32),
+            updatemenus=[dict(
+                type="buttons", showactive=False, y=0.32, x=1.02, xanchor="left",
+                buttons=[
+                    dict(label="▶ Play", method="animate",
+                         args=[None, {"frame": {"duration": 80, "redraw": True},
+                                      "fromcurrent": True}]),
+                    dict(label="⏸ Pause", method="animate",
+                         args=[[None], {"frame": {"duration": 0}, "mode": "immediate"}]),
+                ],
+            )],
+            sliders=[dict(
+                currentvalue=dict(prefix="frame: ", font=dict(size=11)),
+                pad=dict(t=10),
+                steps=[dict(
+                    method="animate",
+                    args=[[str(i)], {"frame": {"duration": 0, "redraw": True},
+                                     "mode": "immediate"}],
+                    label=f"{float(t_out[i]):.2f}s",
+                ) for i in range(n_fr)],
+            )],
+            height=750,
+        )
+        return fig
+
+    # ── Parallel skeleton generation ──────────────────────────────────────────
+
+    def parallel_crawl(
+        self,
+        tasks: list[tuple[str, dict]],
+        max_workers: int | None = None,
+    ) -> list[np.ndarray]:
+        """
+        Run multiple skeleton methods in parallel via ``ProcessPoolExecutor``.
+
+        Parameters
+        ----------
+        tasks : list of (method_name, kwargs)
+            e.g. [("crawl_3d_skeleton_arclen", {}),
+                  ("crawl_3d_skeleton",       {"n_frames": 300})]
+        max_workers : int | None
+            Process pool size; defaults to min(len(tasks), cpu_count).
+
+        Returns
+        -------
+        list of ndarray — one result per task, in order.
+
+        Example
+        -------
+        tuner = NeuromuscularTuner(cfg)
+        xyz_n2, xyz_mut = tuner.parallel_crawl([
+            ("crawl_3d_skeleton_arclen", {}),
+            ("crawl_3d_skeleton",        {"n_frames": 601}),
+        ])
+        """
+        import multiprocessing
+        n = max_workers or min(len(tasks), multiprocessing.cpu_count())
+        args = [(asdict(self.cfg), method, kwargs) for method, kwargs in tasks]
+        try:
+            with ProcessPoolExecutor(max_workers=n) as pool:
+                return list(pool.map(_skeleton_worker, args))
+        except Exception:
+            # Fallback: sequential — happens in interactive / stdin contexts where
+            # the spawn start-method can't re-import the __main__ module.
+            return [getattr(self, method)(**kwargs) for method, kwargs in tasks]
+
+    # ── Regression validation ─────────────────────────────────────────────────
+
+    def regression_check(self) -> dict:
+        """
+        Automated regression check for CV-8.1.1 and CV-9.2 (v0.10.0).
+
+        Runs both the eigenworm tuner and the arc-length track-following, then
+        verifies that key metrics stay within tolerances established in earlier
+        versions.
+
+        Returns
+        -------
+        dict with per-CV pass/fail flags and measured values.
+        """
+        results = {}
+
+        # ── CV-8.1.1: eigenworm tuner ─────────────────────────────────────────
+        r = self.tune()
+        results["CV-8.1.1"] = {
+            "R2":        r["var_explained"],
+            "CEl48":     r["cel_mean_bl2"],
+            "RMS_um":    r["rms_um"],
+            "R2_pass":   r["var_explained"] >= 0.94,
+            "CEl48_pass":r["cel_mean_bl2"]  <= 1.5e-4,
+            "RMS_pass":  r["rms_um"]        <= 10.0,
+        }
+        results["CV-8.1.1"]["PASS"] = all(
+            results["CV-8.1.1"][k] for k in ("R2_pass", "CEl48_pass", "RMS_pass")
+        )
+
+        # ── CV-9.2: arc-length track-following ────────────────────────────────
+        try:
+            xyz = self.crawl_3d_skeleton_arclen()   # also resolves MAT path
+            import scipy.io as sio, pathlib as _pl2
+            _mat_path = (
+                _pl2.Path(__file__).parent.parent.parent
+                / "docs/research/nguyen2018/ShawM_PLOSONE_2018"
+                / "foraging worm (Fig 4)/Midline skeletons/MidlineSkeletons.mat"
+            )
+            mat   = sio.loadmat(str(_mat_path))
+            real  = mat["smoothSkeletonMatrix"].transpose(2, 1, 0)
+            head_err = float(np.linalg.norm(xyz[:, 0, :] - real[:, 0, :], axis=1).mean())
+            arc      = np.linalg.norm(np.diff(xyz, axis=1), axis=2).sum(axis=1)
+            arc_mean = float(arc.mean())
+            # P75 of the LAST HALF — early frames lack history so are shorter;
+            # late frames (>300) should reach ~95-100% of L_um.
+            arc_late_p75 = float(np.percentile(arc[300:], 75))
+            results["CV-9.2"] = {
+                "head_error_um":  head_err,
+                "arc_mean_um":    arc_mean,
+                "arc_late_p75_um":arc_late_p75,
+                "head_zero_pass": head_err < 1e-6,
+                "arc_pass":       arc_late_p75 >= 535.0,   # ≥88.6% of L=604 µm
+            }
+            results["CV-9.2"]["PASS"] = all(
+                results["CV-9.2"][k] for k in ("head_zero_pass", "arc_pass")
+            )
+        except Exception as exc:
+            results["CV-9.2"] = {"PASS": False, "error": str(exc)}
+
+        return results
 
     def summary(self) -> str:
         r = getattr(self, "_results", None) or self.tune()

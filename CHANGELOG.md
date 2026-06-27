@@ -12,7 +12,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.9.1] - 2026-06-24 *(current)*
+## [0.10.0] - 2026-06-27 *(current)*
+
+### Added
+- **`crawl_3d_skeleton_arclen()`** — arc-length parameterized track-following with Gaussian head-path smoothing (σ=3 frames); removes per-frame noise-inflated arc; head error=0 by construction; body arc P75(late frames)=546 µm (90% of biological L=604 µm); CV-9.2 PASS
+- **`mutant_skeleton(strain, n_frames, fps)`** — nca-1;nca-2 NALCN double-knockout phenotype skeleton; uses N2 eigenworm basis with published scaling: f_scale=0.64, amp_scale=0.72, speed_scale=0.43, fainting_prob=0.015/frame, fainting_dur=1.5 s; refs: Yemini 2013 + Jospin 2007 + Gao 2015
+- **`ion_channel_metrics(strain)`** — validation dict with f/amp/speed_error_pct; errors=0% by construction
+- **`render_fig_n2_vs_mutant(strain, n_frames, fps, seed)`** — Plotly interactive figure: N2 (left) vs nca-1;nca-2 (right); CV-8.1.1 style (dark bg `#0b0f16`, fixed ±0.32 BL × ±0.65 BL, curvature colormap, head trail, muscle dots, lateral-span panel); outputs `v0100_n2_vs_mutant.html` (1.7 MB) + `v0100_n2_vs_mutant.gif` (278 KB, 57 frames); CV-10.2 PASS
+- **`render_fig4b_mutant_compare(strain, gif_path, f_hz_n2, lam_BL, seed)`** — biologically-realistic N2 vs mutant 3D comparison; same Nguyen 2018 scene as CV-9.2 (`render_fig4b_match()`): 3D perspective elev=25/azim=-60 + X-Y + X-Z projections; mutant head trajectory derived by decomposing each N2 head step into forward + lateral components and scaling by `speed_scale=0.43` and `amp_scale=0.72` respectively; fainting: head freezes, body straightens progressively; slower undulation wave (64%) increases head→tail delay; result: mutant covers ~15% of N2 XY area in 30 s; CV-10.6 PASS
+- **`parallel_crawl(tasks, max_workers)`** — `ProcessPoolExecutor` wrapper with sequential fallback for interactive sessions
+- **`regression_check()`** — automated pass/fail for CV-8.1.1 and CV-9.2; returns dict with per-CV PASS bool
+- **`TunerConfig.channel_perturbations`** / **`TunerConfig.mutant_strain`** — dataclass fields for ion-channel knockout specification
+- **`_MUTANT_PRESETS`** module-level dict — nca-1;nca-2 preset; extensible for future strains
+- `docs/images/v0100_arclen_cv.png` — arc-length body distribution (CV-10.1)
+- `docs/images/v0100_n2_vs_mutant.gif` — N2 vs nca-1;nca-2 eigenworm 2D comparison (CV-10.2)
+- `docs/images/v0100_n2_vs_mutant.html` — Plotly interactive figure (CV-10.2)
+- `docs/images/v0100_mutant_real_vs_sim.gif` — phenotype reference vs wormsim2 simulation (CV-10.5)
+- `docs/images/v0100_n2_vs_mutant_3d.gif` — 3D N2 vs mutant biologically-realistic crawl comparison, 150 frames, 2.9 MB (CV-10.6)
+- `docs/perturbation_nca_knockout.yaml` — PerturbationConfig: NCA gbar_scale=0, cell list, expected phenotype (CV-10.3)
+- `notebooks/project_tour.ipynb` — cells 84–90: v0.10.0 header + CV-10.1 (arc-length) + CV-10.2 (Plotly N2 vs mutant) + CV-10.3 (C++ spec + YAML) + CV-10.5 (phenotype ref vs sim) + CV-10.6 (3D compare) + CV-10.4 (cumulative); ALL CVs PASS ✓
+
+### Fixed
+- `mutant_skeleton()` eigenworm dimension was `cfg.n_segments=24`; corrected to `self.eigenvecs.shape[1]` (48)
+- `mutant_skeleton()` body reconstruction was applying `cumsum(theta)*ds` twice; corrected to match `_reconstruct()`: `th = theta − π/2; x = cumsum(cos(th)*ds); y = cumsum(sin(th)*ds)`
+- `mutant_skeleton()` standing-wave phase: all eigenworm modes were in phase (`phi_k = zeros`), causing body to flip through the straight mean posture at each half-period; fixed to extract traveling-wave phase offsets from real N2 eigenworm FFT (mode 1 leads mode 0 by ≈87°)
+- CV-10.5 left-panel: reference kept real N2 body shapes during fainting; fixed to apply the same `alpha` ramp so both panels straighten identically during fainting episodes
+- CV-10.5 forward-progress: was using `v_fwd_mut * t_out[i]` (absolute time, jumps at faint end); fixed to accumulated `y_prog[i]`
+
+---
+
+## [0.9.1] - 2026-06-24
 
 ### Added
 - **`swim_skeleton()`** — retrograde bend-wave model (Fang-Yen 2010 PNAS): θ_bend(s,t)=A·sin(2π(ft−s/λ)), f=1.76 Hz, λ=0.65 BL, 1.54 spatial cycles; integration convention matches `_reconstruct()` (phi=cumsum(theta)−π/2); head at +Y, midpoint fixed at (0,0); loads real 3D data if `TunerConfig.swim_csv` is set

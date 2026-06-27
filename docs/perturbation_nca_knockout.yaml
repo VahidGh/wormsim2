@@ -1,0 +1,15 @@
+# PerturbationConfig: nca-1;nca-2 double knockout
+# Sets NCA (NALCN) conductance to 0 in all motoneurons.
+# Reference: Jospin 2007 (doi:10.1523/jneurosci.1618-07.2007) + Gao 2015 + Yemini 2013
+perturbations:
+  - channel: NCA
+    gbar_scale: 0.0
+    cells: [DB1, DB2, DB3, DB4, DB5, DB6, DB7,
+            VB1, VB2, VB3, VB4, VB5, VB6, VB7,
+            DD1, DD2, DD3, DD4, DD5, DD6,
+            VD1, VD2, VD3, VD4, VD5, VD6, VD7, VD8, VD9, VD10, VD11, VD12]
+expected_phenotype:
+  f_scale: 0.64          # 0.50 Hz -> 0.32 Hz
+  amp_scale: 0.72
+  speed_scale: 0.43
+doi: "10.1523/jneurosci.1618-07.2007 / 10.1038/nmeth.2560"
