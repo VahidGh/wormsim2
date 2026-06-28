@@ -1,6 +1,6 @@
 # wormsim2
 
-[![Version](https://img.shields.io/badge/version-v0.11.0-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.11.1-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-C%2B%2B20-blue?style=flat-square)](src/cpp/)
 [![Backends](https://img.shields.io/badge/backends-CPU%20%7C%20CUDA%20%7C%20OpenCL-76b900?style=flat-square)](docs/research/00-motivation-objectives-related-work.md)
@@ -81,11 +81,11 @@ See [`docs/install/local_cpu.md`](docs/install/local_cpu.md) for full instructio
 
 ---
 
-## Latest validated results (v0.11.0)
+## Latest validated results (v0.11.1)
 
 **CV-11 — Hardware-accelerated parallelism + full-length (30s) real-data-initialized validation**
 
-v0.11.0 adds a hardware detection layer (`hardware.py`), parallel skeleton backends (`backends.py`),
+v0.11.1 adds agar-plate dislocation visualization (CV-11.5) and fixes numpy-array guard in plotly_fig_to_gif. v0.11.0 adds a hardware detection layer (`hardware.py`), parallel skeleton backends (`backends.py`),
 C++ OpenMP for the HH gate loop, and installation guides for all deployment scenarios.
 All prior CVs (CV-8.1.1, CV-10.2, CV-10.7, CV-10.8) are repeated as CV-11.2–11.4
 with **30-second full-length simulation**, **real-data initialization** from `theta_rec[0]`,
@@ -101,6 +101,14 @@ and NumPy-batch backend (**62.7×** faster than serial NumPy on this dev machine
 > HPC estimate (CINECA G100, Tesla V100S, 6912 CUDA cores):
 > Amdahl f_par=97% → theoretical 33×; practical JAX-CUDA vs serial: **~200–500×**.
 > Full installation guides: [`docs/install/`](docs/install/)
+
+<img src="docs/images/v1105_n2_plate_600s.gif" width="900" alt="CV-11.5 — N2 WT agar-plate view 600 s (real WCON data, FK round-trip)"/>
+
+> 220-frame GIF at 20 fps (11 s, covers full 600 s recording = 82.6 BL centroid path).
+> **Left:** real N2 skeleton (Zenodo 1031837, Schafer Lab, 2014, 49 keypoints, µm plate-frame).
+> **Right:** FK round-trip (per-frame `theta_body` → `compute_skeletons`, mean shape error 0.040 BL).
+> Head marker (bright circle) at index 0 (WCON `head='L'`). Cream = agar plate background.
+> Full interactive 600 s Plotly: [`docs/images/v1105_n2_plate_600s.html`](docs/images/v1105_n2_plate_600s.html) (12.7 MB).
 
 <img src="docs/images/v1103_nca_preview.gif" width="900" alt="CV-11.3 — nca-1;nca-2 full-length (30s, real-data-initialized)"/>
 

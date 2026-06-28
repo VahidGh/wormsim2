@@ -12,7 +12,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.11.0] - 2026-06-28 *(current)*
+## [0.11.1] - 2026-06-28 *(current)*
+
+### Added
+- **CV-11.5 notebook cell** — N2 vs N2-simulated agar-plate view: full 4 s window (114 frames),
+  both worms normalised to 1 BL (measured real arc = 0.656 mm), plate-frame coordinates with
+  0.856 BL forward translocation, cream agar background, Plasma head→tail gradient, accumulated
+  centroid trail. Zenodo option-2 hook documented in source. ISSUES 013-015 added to
+  `docs/ISSUES.md` as future architectural plans.
+- **`docs/images/v1105_n2_plate_view.gif`** — 114-frame agar-plate GIF (547 KB, 14 fps).
+- **`docs/images/v1105_n2_plate_view.html`** — interactive Plotly version with play/pause (4 s).
+- **`docs/images/v1105_n2_plate_600s.gif`** — compact 600 s agar-plate GIF (220 frames at 20 fps,
+  11 s total, 1.7 MB): covers the entire 82.6 BL centroid path; per-panel matplotlib render
+  (same data pipeline as HTML); growing centroid trail, Plasma body gradient, head circle at
+  index 0; embedded in `notebooks/project_tour.ipynb` cell CV-11.5b + linked in README.
+- **`docs/images/v1105_n2_plate_600s.html`** — full 600 s agar-plate view (real WCON data,
+  Zenodo 1031837): 616 animation frames subsampled ×28 from 17 226 valid frames; FK body is an
+  FK round-trip of the real skeleton (per-frame `theta_body` from WCON → `compute_skeletons` →
+  uniform-segment reconstruction); mean FK shape error 0.040 BL (uniform-ds approximation);
+  total centroid path 82.6 BL; head marker (yellow circle) at index 0 (WCON `head='L'`);
+  body-length normalised to 1 BL (real arc 0.664 mm); both panels share the same centroid track.
+
+### Fixed
+- **`src/python/tuner.py` `plotly_fig_to_gif`** — (1) two `or []` truthiness guards on ndarray
+  replaced with `is not None`; (2) added `set_aspect("equal", adjustable="datalim")` for panels
+  whose x and y spans are within 15% of each other, ensuring equal pixel scale across subplots.
+- **`docs/images/v1105_n2_plate_600s.html`** — head marker corrected to index 0 (WCON `head='L'`
+  convention; previous version erroneously placed circle at index 48 = tail); body curvature now
+  extracted per frame from the real WCON skeleton via `xy_to_tangent` and fed to `compute_skeletons`
+  (FK round-trip), replacing the earlier tiled periodic 4 s `theta_rec` that did not track the
+  real worm's time-varying behaviour (stops, reversals, omega turns).
+
+---
+
+## [0.11.0] - 2026-06-28
 
 ### Added
 - **`src/python/skeleton.py`** (new canonical FK module) — `theta_body` convention documented with derivation; `tangent_to_xy(theta_body, ds, mid_idx)` and `tangent_to_xy_batch()` are the single source of truth for all FK math; `xy_to_tangent(x,y)` inverse; `load_skeleton_csv(path)` → `SkeletonData` (reads `t_s,x0..x48,y0..y48` CSV, aligns tail→head to +y, centres at midpoint, computes theta_body); `visualize_skeleton_csv(path)` → Plotly animation directly from any compatible CSV; module docstring explains why cumsum-on-angles is wrong (the bug this release fixes)

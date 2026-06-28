@@ -3762,11 +3762,12 @@ def plotly_fig_to_gif(
 
     def _collect(td, sp_idx):
         xid, yid = subplot_pairs[sp_idx]
-        for v in (td.get("x") or []):
+        x_data = td.get("x"); y_data = td.get("y")
+        for v in (x_data if x_data is not None else []):
             if v is not None:
                 try: all_vals[xid].append(float(v))
                 except (TypeError, ValueError): pass
-        for v in (td.get("y") or []):
+        for v in (y_data if y_data is not None else []):
             if v is not None:
                 try: all_vals[yid].append(float(v))
                 except (TypeError, ValueError): pass
@@ -3863,6 +3864,12 @@ def plotly_fig_to_gif(
             ax.set_facecolor(plot_bg)
             ax.set_xlim(*axis_limits[sp[0]])
             ax.set_ylim(*axis_limits[sp[1]])
+            # Equal aspect ratio: x and y use the same pixels-per-unit so
+            # circular worm cross-sections look round and both panels match.
+            xspan = axis_limits[sp[0]][1] - axis_limits[sp[0]][0]
+            yspan = axis_limits[sp[1]][1] - axis_limits[sp[1]][0]
+            if abs(xspan - yspan) / max(xspan, yspan) < 0.15:
+                ax.set_aspect("equal", adjustable="datalim")
             ax.tick_params(colors="#444444", labelsize=0, length=0)
             for spine in ax.spines.values():
                 spine.set_color("#333333")
@@ -3872,8 +3879,9 @@ def plotly_fig_to_gif(
         for i, (cd, style) in enumerate(zip(cur, trace_styles)):
             si  = subplot_pairs.index(trace_subplot[i])
             ax  = axes[si]
-            xs  = list(cd.get("x") or [])
-            ys  = list(cd.get("y") or [])
+            _xd = cd.get("x"); _yd = cd.get("y")
+            xs  = list(_xd if _xd is not None else [])
+            ys  = list(_yd if _yd is not None else [])
             if not xs or not ys:
                 continue
             n   = min(len(xs), len(ys))
