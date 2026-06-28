@@ -12,7 +12,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.11.1] - 2026-06-28 *(current)*
+## [0.11.2] - 2026-06-28 *(current)*
+
+### Fixed
+- **Head/tail flip correction in N2 WCON processing** — the N2 recording (Zenodo 1031837)
+  has a 16.6 s tracking gap at t=431.4→448.0 s where the tracker re-acquired the worm with
+  head and tail swapped. Without correction, PCA mode-1 coefficient has mean +4.9 before the gap
+  and −14.0 after, producing bizarre body shapes in the animation for the final ~168 s.
+  Fix: detect large time gaps (>5 s); compute mean body-orientation angle in a 10-frame window
+  before and after; if the direction changes by >90° → reverse the keypoint order for all
+  subsequent frames. Applied in `cv115b_tuner_600s.py` (generates the N2 Plotly HTML + GIF).
+  After correction: mode-1 mean ≈ 0 both before and after, PCA var_explained=0.782,
+  tuner shape error=0.022 BL (CoM-aligned).
+- **CV-11.5b: right panel now shows 4-mode PCA tuner output** (not FK round-trip) — previous
+  version (`v1105_n2_plate_600s.html`) used a trivial FK round-trip that reproduced the real
+  skeleton almost exactly (error ≈ 0.008 BL), making the right panel redundant. New version
+  (`v1200_n2_tuner_600s.html`) shows `theta_rec = mu + Σ aₙ(t)·eₙ(s)` with n=1..4 — the
+  NeuromuscularTuner's actual generative model output that feeds `fem_body_trace --activation-csv`.
+  The right panel now shows a visually distinct but biologically faithful approximation
+  (var_exp=0.782, shape error=0.022 BL vs 0.008 BL FK sanity).
+- **`.github/workflows/ci-baseline.yml`** — added `-DWORMSIM2_OPENMP=OFF` to both cmake
+  configure steps (build-test and coverage jobs); prevents `omp.h not found` clang-tidy error
+  on Ubuntu runners where `find_package(OpenMP)` succeeds but clang-tidy cannot find the header.
+
+### Added
+- **`docs/images/v1200_n2_tuner_600s.html`** — N2 WT agar-plate Plotly HTML with flip
+  correction + 4-mode tuner output; 638 animation frames ×27 from 17 226 valid frames;
+  left: real WCON (flip-corrected), right: NeuromuscularTuner eigenworm reconstruction;
+  responsive layout (`autosize=True`); 13.6 MB.
+- **`docs/images/v1105_n2_plate_600s.gif`** — replaced with flip-corrected 4-mode tuner GIF
+  (221 frames @ 20 fps, 11 s, 578 KB); generated via `plotly_fig_to_gif()`.
+
+---
+
+## [0.11.1] - 2026-06-28
 
 ### Added
 - **CV-11.5 notebook cell** — N2 vs N2-simulated agar-plate view: full 4 s window (114 frames),
