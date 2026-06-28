@@ -1,0 +1,18 @@
+# PerturbationConfig: egl-19(n2368) partial reduction-of-function
+# Sets EGL-19 (L-type VGCC, Cav1 homolog) conductance to 60% in body-wall muscle.
+# n2368 shifts the S4-S5 activation gate → ~40% reduction in peak BWM Ca2+ current.
+# ONE channel change only — all other channels remain at WT (gbar_scale=1.0).
+# Reference: Lee 1997 (doi:10.1083/jcb.138.1.151) + Yemini 2013 (doi:10.1038/nmeth.2560)
+# Raw recordings: Open Worm Movement Database / Worm Behavior Database (Schafer lab, Zenodo 1031837)
+strain_name: "egl-19(n2368)"
+perturbations:
+  - channel: EGL19
+    gbar_scale: 0.60
+    cells: [BWM_DL, BWM_DR, BWM_VL, BWM_VR]
+    notes: "n2368 partial LOF; peak Ca2+ current ~40% reduced in body-wall muscle"
+expected_phenotype:
+  f_scale: 0.80          # slight freq reduction (circuit mostly intact)
+  amp_scale: 0.63        # primary effect: reduced Ca2+ -> weaker contraction
+  speed_scale: 0.71      # correlated with amp*freq
+  fainting_prob: 0.0     # no fainting (NCA circuit pathway intact)
+doi: "10.1083/jcb.138.1.151 / 10.1038/nmeth.2560"

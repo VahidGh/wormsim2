@@ -67,7 +67,16 @@
 | `docs/images/v0100_n2_vs_mutant.html` | v0.10.0 Plotly interactive N2 vs nca-1;nca-2 figure; dark bg, ±0.32 BL × ±0.65 BL, curvature colormap, lateral-span panel; 1.7 MB | `tuner.render_fig_n2_vs_mutant()` — CV-10.2 |
 | `docs/images/v0100_mutant_real_vs_sim.gif` | v0.10.0 phenotype-reference (real N2 shapes + Yemini 2013 scaling) vs wormsim2 simulation side-by-side; 57 frames, 287 KB | notebook CV-10.5 |
 | `docs/images/v0100_n2_vs_mutant_3d.gif` | v0.10.0 3D N2 vs nca-1;nca-2 biologically-realistic crawl comparison (Nguyen 2018 scene); 150 frames, 2.9 MB; mutant covers ~15% of N2 XY area | `tuner.render_fig4b_mutant_compare()` — CV-10.6 |
-| `docs/perturbation_nca_knockout.yaml` | PerturbationConfig: NCA gbar_scale=0; D/V motoneuron cell list; expected phenotype (f_scale=0.64, amp_scale=0.72, speed_scale=0.43); doi refs | notebook CV-10.3 |
+| `docs/perturbation_nca_knockout.yaml` | PerturbationConfig: NCA gbar_scale=0; D/V motoneuron cell list; expected phenotype; added `strain_name: "nca-1;nca-2"` in v0.10.1 | notebook CV-10.3; `PerturbationPipeline.infer_from_yaml()` |
+| `docs/images/v0101_nca_sweep.png` | v0.10.1 NCA dose–response sweep: 4 panels (f, amp, speed, fainting_prob vs gbar_scale 0→1); leak_depolarizing archetype | notebook CV-10.7; `PerturbationPipeline.sweep("NCA")` |
+| `docs/images/v0101_nca_pipeline.html` | v0.10.1 nca-1;nca-2 interactive Plotly animation (`render_fig_n2_vs_mutant()`); 114 frames; left panel = real N2 skeleton × 0.72 amp_scale (no drift); right = wormsim2 mutant_skeleton; fixed ±0.32 BL × ±0.65 BL window; curvature colormap; head trail; lateral-span panel; 1.7 MB | notebook CV-10.7 |
+| `docs/images/v0101_nca_pipeline.gif` | v0.10.2 nca-1;nca-2 animated GIF from `plotly_fig_to_gif()` (matplotlib render); 114 frames at 12 fps; 887 KB; used in README v0.10.1 section | `plotly_fig_to_gif(fig107, ...)` — CV-10.7 |
+| `docs/images/v0101_nca_pipeline_preview.png` | v0.10.1 static preview of nca-1;nca-2 Plotly figure (kaleido frame 0); 130 KB | notebook CV-10.7 |
+| `docs/perturbation_egl19_rof.yaml` | PerturbationConfig: egl-19(n2368) partial LOF; ONE channel only: EGL19 gbar_scale=0.60 in BWM cells; all other channels at WT; expected phenotype from `_MUTANT_PRESETS`; added v0.10.2 | notebook CV-10.8; `PerturbationPipeline.infer_from_yaml()` |
+| `docs/images/v0102_egl19_sweep.png` | v0.10.2 EGL-19 dose–response sweep: 4 panels (f, amp, speed, fainting_prob vs gbar_scale 0→1); Ca_spike archetype; n2368 anchor at gbar=0.60 | notebook CV-10.8; `PerturbationPipeline.sweep("EGL19")` |
+| `docs/images/v0102_egl19_rof.html` | v0.10.2 egl-19(n2368) interactive Plotly animation (`render_fig_n2_vs_mutant()`); 114 frames; left panel = real N2 skeleton × 0.63 amp_scale (no drift, no fainting); right = wormsim2 mutant_skeleton; EGL-19 subplot title patched; 1.7 MB | notebook CV-10.8 |
+| `docs/images/v0102_egl19_rof.gif` | v0.10.2 egl-19(n2368) animated GIF from `plotly_fig_to_gif()` (matplotlib render); 114 frames at 12 fps; 1230 KB; used in README v0.10.2 section | `plotly_fig_to_gif(fig108, ...)` — CV-10.8 |
+| `docs/images/v0102_egl19_rof_preview.png` | v0.10.2 static preview of egl-19(n2368) Plotly figure (kaleido frame 0); 140 KB | notebook CV-10.8 |
 
 ---
 

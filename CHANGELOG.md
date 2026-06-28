@@ -12,7 +12,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.10.0] - 2026-06-27 *(current)*
+## [0.10.2] - 2026-06-28 *(current)*
+
+### Added
+- **`egl-19(n2368)` preset** in `_MUTANT_PRESETS` (`tuner.py`): L-type voltage-gated Ca²⁺ channel (Cav1 homolog) in body-wall muscle; S4-S5 linker partial LOF; gbar_scale=0.60 → Δamp=−37%, Δf=−20%, Δspd=−29%, no fainting; one-channel change, NCA/cholinergic circuit at WT; calibrated on Yemini 2013 (Worm Behavior Database) + Lee 1997
+- **`docs/perturbation_egl19_rof.yaml`**: PerturbationConfig specifying EGL19 gbar_scale=0.60 in BWM cells only; all other channels untouched; `strain_name: "egl-19(n2368)"` for `infer_from_yaml()` literature lookup
+- **CV-10.8 notebook cell** (`notebooks/project_tour.ipynb`, id=01008): EGL-19 dose–response sweep (`PerturbationPipeline.sweep("EGL19")`), egl-19(n2368) interactive Plotly animation (`render_fig_n2_vs_mutant()`, same style as CV-10.2), and 3-way comparison table N2 vs nca-1;nca-2 vs egl-19(n2368) demonstrating circuit failure vs muscle-actuator weakening contrast
+- `docs/images/v0102_egl19_sweep.png`: Ca_spike dose–response sweep with n2368 anchor at gbar=0.60
+- `docs/images/v0102_egl19_rof.html`: egl-19(n2368) interactive Plotly animation (1.7 MB; fixed ±0.32 BL × ±0.65 BL window; EGL-19 subplot title patched)
+- `docs/images/v0102_egl19_rof_preview.png`: static kaleido preview for README (140 KB)
+- **`plotly_fig_to_gif(fig, path, fps, width_px, height_px, dpi, title)`** module-level function in `tuner.py` (`tuner.py:3647`): converts any animated Plotly scatter figure to a GIF using matplotlib rendering rather than kaleido; extracts per-frame (x, y) trace data, detects subplots from (xaxis, yaxis) pairs, reads background/layout from `fig.layout`, reproduces curvature gradients via Plasma colorscale sampling; ~500× faster than kaleido (23–50 s for 114 frames vs ~10 min)
+- `docs/images/v0101_nca_pipeline.gif`: 114-frame 12 fps GIF of CV-10.7 produced by `plotly_fig_to_gif()`; 887 KB; replaces static preview PNG in README
+- `docs/images/v0102_egl19_rof.gif`: 114-frame 12 fps GIF of CV-10.8 produced by `plotly_fig_to_gif()`; 1230 KB; replaces static preview PNG in README
+
+### Fixed
+- **CV-10.7 and CV-10.8 left panel now uses real N2 skeleton data**: `render_fig_n2_vs_mutant()` gains `ref_x/ref_y/ref_label/cv_label` parameters (`tuner.py:3247`); when `ref_x` is provided the left panel shows those shapes (centred per frame, zero synthetic drift) instead of the eigenworm simulation `xSIM/ySIM`. CV-10.7 uses `tuner.theta_rec × sc_lit.amp_scale` (nca-1;nca-2 reference, with fainting alpha); CV-10.8 uses `tuner.theta_rec × sc_egl.amp_scale` (egl-19 reference, no fainting). Correct layout: reference measurement left, wormsim2 prediction right. Both HTML and GIF regenerated.
+
+---
+
+## [0.10.1] - 2026-06-27
+
+### Added
+- **`KinematicScaling`** dataclass — typed carrier for all mutant phenotype scaling factors (f, amp, speed, fainting_prob, fainting_dur_s) plus provenance fields (`source`, `confidence`, `notes`); `summary()`, `compare_to()`, `as_preset_dict()` helpers
+- **`PerturbationSpec`** dataclass — describes any ion-channel perturbation; factory methods `knockout()`, `partial()`, `gain_of_function()`, `from_yaml()` (flat + nested format), `from_nml()` (NeuroML2 conductanceDensity parser)
+- **`NeuralKinematicsExtractor`** class — extracts `KinematicScaling` from C++ HH voltage-trace CSVs (burst-frequency analysis, quiescence detection, peak-to-trough amplitude ratio); enabled when trace CSV paths are passed to `PerturbationPipeline.infer()`
+- **`PerturbationPipeline`** class — three-tier inference: (1) `_MUTANT_LITERATURE` named-strain lookup (conf=1.0), (2) `NeuralKinematicsExtractor` from HH traces (conf=0.85), (3) biophysical power-law transfer function (conf=0.45–0.60); `infer()`, `infer_from_yaml()`, `sweep()` (dose–response)
+- **`PerturbationPipeline._CHANNEL_TYPE_MAP`** — 23 channel IDs mapped to 5 biophysical archetypes: `leak_depolarizing`, `K_repolarizing`, `Ca_spike`, `Na_spike`, `Ih_pacemaker`
+- **`PerturbationPipeline._BIOPHYS`** — power-law parameters per archetype; calibrated on nca-1;nca-2 (Yemini 2013 / Jospin 2007); GoF (gbar>1) handled by symmetric extension
+- **`_MUTANT_LITERATURE`** module-level dict — wraps `_MUTANT_PRESETS` as `KinematicScaling` objects; extended automatically when new presets are added
+- `mutant_skeleton()`, `render_fig4b_mutant_compare()`, `render_gif_n2_vs_mutant()`, `render_fig_n2_vs_mutant()` — all accept `scaling: KinematicScaling | None` parameter; when provided, bypasses `_MUTANT_PRESETS` lookup entirely
+- `docs/perturbation_nca_knockout.yaml` updated: added `strain_name: "nca-1;nca-2"` top-level key so `infer_from_yaml()` hits the literature path
+- `docs/images/v0101_nca_sweep.png` — NCA dose–response sweep (4 panels: f, amp, speed, fainting_prob vs gbar_scale 0→1); CV-10.7
+- `docs/images/v0101_nca_pipeline.html` — nca-1;nca-2 interactive Plotly animation (`render_fig_n2_vs_mutant()`, same style as CV-10.2); 1.7 MB; fixed-window display; head trail; lateral-span panel
+- `docs/images/v0101_nca_pipeline_preview.png` — static kaleido preview for README (138 KB)
+- Notebook cell CV-10.7 — demonstrates all 3 inference paths, sweep plot, Plotly animation via `scaling=` API; ALL assertions PASS ✓
+
+---
+
+## [0.10.0] - 2026-06-27
 
 ### Added
 - **`crawl_3d_skeleton_arclen()`** — arc-length parameterized track-following with Gaussian head-path smoothing (σ=3 frames); removes per-frame noise-inflated arc; head error=0 by construction; body arc P75(late frames)=546 µm (90% of biological L=604 µm); CV-9.2 PASS

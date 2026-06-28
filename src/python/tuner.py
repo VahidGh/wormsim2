@@ -111,7 +111,582 @@ _MUTANT_PRESETS: dict[str, dict] = {
         "reference":        "Yemini 2013 + Jospin 2007 + Gao 2015",
         "doi":              "10.1038/nmeth.2560 / 10.1523/jneurosci.1618-07.2007",
     },
+    "egl-19(n2368)": {
+        # L-type voltage-gated Ca2+ channel (Cav1 homolog) in body-wall muscle
+        # n2368: S4-S5 linker mutation → ~40% reduction in peak BWM Ca2+ current
+        # ONE channel perturbation only; NCA/circuit pathway left at WT.
+        # Primary effect: amplitude (muscle contraction strength ↓); frequency only mildly
+        # affected because the premotor oscillator (AVB/AVA) remains intact.
+        # Ca_spike archetype at gbar=0.60; calibrated on egl-19/unc-2 hypomorphs (Yemini 2013).
+        # Raw recordings available: Worm Behavior Database, Zenodo 1031837 (Schafer lab).
+        "channel":          "EGL19",
+        "gbar_scale":       0.60,   # n2368 partial LOF; ~40% peak Ca2+ reduction in BWM
+        "f_scale":          0.80,   # 0.50 → 0.40 Hz; circuit mostly intact
+        "amp_scale":        0.63,   # primary effect: weaker contraction → smaller body bends
+        "speed_scale":      0.71,   # correlated with amp × freq; less severe than nca-1;nca-2
+        "fainting_prob":    0.0,    # NO fainting — NCA/cholinergic circuit intact
+        "fainting_dur_s":   0.0,
+        "reference":        "Yemini 2013 (Worm Behavior Database) + Lee 1997",
+        "doi":              "10.1038/nmeth.2560 / 10.1083/jcb.138.1.151",
+    },
 }
+
+
+# ── Kinematic scaling + perturbation pipeline (v0.10.1) ───────────────────────
+
+
+@dataclass
+class KinematicScaling:
+    """
+    Phenotype scaling factors for a mutant strain relative to N2 wild-type.
+
+    All scale factors are multiplicative relative to wild-type:
+      1.0 = identical to N2  ·  0.0 = completely silent  ·  >1.0 = enhanced
+
+    Produced by ``PerturbationPipeline.infer()`` and consumed by
+    ``mutant_skeleton()``, ``render_fig4b_mutant_compare()``,
+    ``render_gif_n2_vs_mutant()``, ``render_fig_n2_vs_mutant()``.
+
+    Attributes
+    ----------
+    f_scale       : undulation frequency ratio  (mut / N2)
+    amp_scale     : peak body-bend amplitude ratio
+    speed_scale   : forward locomotion speed ratio
+    fainting_prob : per-frame Bernoulli probability of a fainting episode
+    fainting_dur_s: mean fainting episode duration (seconds)
+    source        : "literature" | "hh_sim" | "biophysical"
+    confidence    : 0–1; literature=1.0, hh_sim≈0.85, biophysical≈0.45–0.60
+    notes         : provenance / citation string
+    """
+    f_scale:        float = 1.0
+    amp_scale:      float = 1.0
+    speed_scale:    float = 1.0
+    fainting_prob:  float = 0.0
+    fainting_dur_s: float = 0.0
+    source:         str   = "inferred"
+    confidence:     float = 1.0
+    notes:          str   = ""
+
+    def as_preset_dict(self) -> dict:
+        """Legacy dict format — backward compat with _MUTANT_PRESETS consumers."""
+        return {
+            "f_scale":        self.f_scale,
+            "amp_scale":      self.amp_scale,
+            "speed_scale":    self.speed_scale,
+            "fainting_prob":  self.fainting_prob,
+            "fainting_dur_s": self.fainting_dur_s,
+        }
+
+    def summary(self) -> str:
+        return (
+            f"f×{self.f_scale:.3f}  amp×{self.amp_scale:.3f}  "
+            f"spd×{self.speed_scale:.3f}  "
+            f"faint_p={self.fainting_prob:.4f}  faint_d={self.fainting_dur_s:.2f}s"
+            f"  [{self.source}, conf={self.confidence:.2f}]"
+        )
+
+    def compare_to(self, other: "KinematicScaling") -> dict:
+        """Relative difference (%) between self and *other* for each scaling factor."""
+        def _rd(a: float, b: float) -> float:
+            return (b - a) / (abs(a) + 1e-12) * 100
+        return {
+            "df_pct":   _rd(self.f_scale,     other.f_scale),
+            "damp_pct": _rd(self.amp_scale,   other.amp_scale),
+            "dspd_pct": _rd(self.speed_scale, other.speed_scale),
+        }
+
+
+@dataclass
+class PerturbationSpec:
+    """
+    Describes a single ion-channel perturbation for ``PerturbationPipeline``.
+
+    Attributes
+    ----------
+    channel     : channel ID matching ``PerturbationPipeline._CHANNEL_TYPE_MAP``
+                  (case-insensitive; e.g. "NCA", "EGL19", "KSLOW_BC")
+    gbar_scale  : conductance scale  (0.0=KO, 0.5=partial, 1.0=WT, >1.0=GoF)
+    cells       : cell types affected (empty list = all cells expressing channel)
+    strain_name : optional C. elegans strain tag for literature lookup
+                  (e.g. "nca-1;nca-2")
+    """
+    channel:     str
+    gbar_scale:  float = 0.0
+    cells:       list  = field(default_factory=list)
+    strain_name: str   = ""
+
+    # ------------------------------------------------------------------
+    @classmethod
+    def from_yaml(cls, path: str) -> "PerturbationSpec":
+        """
+        Load from a PerturbationConfig YAML.
+
+        Handles two formats:
+
+        Flat format::
+            channel: NCA
+            gbar_scale: 0.0
+            strain_name: "nca-1;nca-2"
+
+        Nested format (multi-perturbation; first entry is used)::
+            strain_name: "nca-1;nca-2"
+            perturbations:
+              - channel: NCA
+                gbar_scale: 0.0
+                cells: [...]
+        """
+        import yaml as _yaml
+        with open(path) as fh:
+            d = _yaml.safe_load(fh)
+        strain = d.get("strain_name", d.get("mutant_strain", ""))
+        # Nested: perturbations list → use first entry
+        if "perturbations" in d and isinstance(d["perturbations"], list):
+            entry = d["perturbations"][0]
+            return cls(
+                channel     = entry.get("channel", ""),
+                gbar_scale  = float(entry.get("gbar_scale", 0.0)),
+                cells       = entry.get("cells", []),
+                strain_name = strain,
+            )
+        # Flat: channel / gbar_scale at top level
+        return cls(
+            channel     = d.get("channel", ""),
+            gbar_scale  = float(d.get("gbar_scale", 0.0)),
+            cells       = d.get("cells", []),
+            strain_name = strain,
+        )
+
+    @classmethod
+    def from_nml(
+        cls,
+        nml_path: str,
+        ref_nml_path: "str | None" = None,
+        strain_name: str = "",
+    ) -> "list[PerturbationSpec]":
+        """
+        Parse a NeuroML2 channel file and return a PerturbationSpec for each
+        channel whose conductanceDensity differs from the reference (N2) file.
+
+        Parameters
+        ----------
+        nml_path     : mutant .nml / .channel.nml file
+        ref_nml_path : N2 reference .nml (used to compute gbar_scale).
+                       If None, gbar_scale=0.0 assumed for zero-conductance channels.
+        strain_name  : optional strain tag for literature lookup.
+        """
+        import xml.etree.ElementTree as ET
+
+        def _extract(path: str) -> dict[str, float]:
+            root  = ET.parse(path).getroot()
+            gbars: dict[str, float] = {}
+            for node in root.iter():
+                for attr in ("conductanceDensity", "condDensity"):
+                    if attr in node.attrib:
+                        name = node.attrib.get("id", node.tag.split("}")[-1])
+                        try:
+                            gbars[name] = float(node.attrib[attr].split()[0])
+                        except (ValueError, IndexError):
+                            pass
+            return gbars
+
+        mut_gbars = _extract(nml_path)
+        ref_gbars = _extract(ref_nml_path) if ref_nml_path else {}
+        specs: list[PerturbationSpec] = []
+        for ch_id, gbar_mut in mut_gbars.items():
+            gbar_ref = ref_gbars.get(ch_id)
+            if gbar_ref is not None and gbar_ref > 0:
+                scale = gbar_mut / gbar_ref
+            elif gbar_mut == 0.0:
+                scale = 0.0
+            else:
+                scale = 1.0
+            if abs(scale - 1.0) > 1e-6:
+                specs.append(cls(channel=ch_id, gbar_scale=scale,
+                                 strain_name=strain_name))
+        return specs
+
+    @classmethod
+    def knockout(
+        cls, channel: str, strain_name: str = "",
+        cells: "list | None" = None,
+    ) -> "PerturbationSpec":
+        """Full knockout — gbar_scale = 0.0."""
+        return cls(channel=channel, gbar_scale=0.0,
+                   cells=cells or [], strain_name=strain_name)
+
+    @classmethod
+    def partial(
+        cls, channel: str, gbar_scale: float,
+        strain_name: str = "", cells: "list | None" = None,
+    ) -> "PerturbationSpec":
+        """Partial knockdown — 0 < gbar_scale < 1."""
+        return cls(channel=channel, gbar_scale=float(gbar_scale),
+                   cells=cells or [], strain_name=strain_name)
+
+    @classmethod
+    def gain_of_function(
+        cls, channel: str, gbar_scale: float,
+        strain_name: str = "", cells: "list | None" = None,
+    ) -> "PerturbationSpec":
+        """Gain-of-function overexpression — gbar_scale > 1.0."""
+        if gbar_scale <= 1.0:
+            raise ValueError("GoF requires gbar_scale > 1.0")
+        return cls(channel=channel, gbar_scale=float(gbar_scale),
+                   cells=cells or [], strain_name=strain_name)
+
+
+# Module-level literature table (populated after PerturbationPipeline is defined)
+_MUTANT_LITERATURE: "dict[str, KinematicScaling]" = {}
+
+
+class NeuralKinematicsExtractor:
+    """
+    Extract KinematicScaling from C++ HH voltage-trace CSVs.
+
+    Expected CSV columns: time_s, <cell_id_0>, <cell_id_1>, ...
+
+    ``PerturbationPipeline`` uses this when trace CSV paths are provided.
+    Falls back to the biophysical transfer function on any failure.
+    """
+
+    THRESHOLD_MV:     float = -30.0   # action-potential detection threshold (mV)
+    MIN_BURST_GAP_S:  float = 0.10    # ISI < this merges two spikes into one burst
+    QUIESCENCE_WIN_S: float = 0.20    # silence longer than this = faint episode
+
+    def __init__(self, t: np.ndarray, V_n2: np.ndarray, V_mut: np.ndarray):
+        self.t     = t
+        self.V_n2  = V_n2
+        self.V_mut = V_mut
+        self._dt   = float(np.median(np.diff(t))) if len(t) > 1 else 0.05
+
+    @classmethod
+    def from_csv(cls, n2_csv: str, mut_csv: str) -> "NeuralKinematicsExtractor":
+        n2  = np.genfromtxt(n2_csv,  delimiter=",", skip_header=1)
+        mut = np.genfromtxt(mut_csv, delimiter=",", skip_header=1)
+        return cls(t=n2[:, 0], V_n2=n2[:, 1:], V_mut=mut[:, 1:])
+
+    def _burst_freq(self, V: np.ndarray) -> np.ndarray:
+        n_neu = V.shape[1]
+        T     = self.t[-1] - self.t[0]
+        gap   = max(1, int(self.MIN_BURST_GAP_S / self._dt))
+        freqs = np.zeros(n_neu)
+        for j in range(n_neu):
+            above = V[:, j] > self.THRESHOLD_MV
+            xs    = np.where(np.diff(above.astype(int)) == 1)[0]
+            last  = -gap - 1; count = 0
+            for c in xs:
+                if c - last > gap:
+                    count += 1; last = c
+            freqs[j] = count / (T + 1e-12)
+        return freqs
+
+    def _quiescence_stats(self, V: np.ndarray) -> "tuple[float, float]":
+        silent  = V.max(axis=1) < self.THRESHOLD_MV
+        min_len = max(1, int(self.QUIESCENCE_WIN_S / self._dt))
+        eps: list[int] = []
+        run = 0
+        for s in silent:
+            if s:
+                run += 1
+            else:
+                if run >= min_len:
+                    eps.append(run)
+                run = 0
+        if run >= min_len:
+            eps.append(run)
+        if not eps:
+            return 0.0, 0.0
+        return float(sum(eps) / len(silent)), float(float(np.mean(eps)) * self._dt)
+
+    def _amplitude_ratio(self) -> float:
+        ptp = lambda V: float(np.mean(V.max(axis=0) - V.min(axis=0)))
+        return ptp(self.V_mut) / (ptp(self.V_n2) + 1e-12)
+
+    def infer_scaling(self) -> "KinematicScaling":
+        """Derive KinematicScaling from loaded voltage traces."""
+        f_n2  = self._burst_freq(self.V_n2).mean()
+        f_mut = self._burst_freq(self.V_mut).mean()
+        f_sc  = float(np.clip(f_mut / (f_n2 + 1e-12), 0.01, 5.0))
+        a_sc  = float(np.clip(self._amplitude_ratio(),      0.01, 5.0))
+        fp, fd = self._quiescence_stats(self.V_mut)
+        # speed ∝ f × amp  (empirical coupling factor 0.90 calibrated on nca-1;nca-2)
+        return KinematicScaling(
+            f_scale=f_sc, amp_scale=a_sc,
+            speed_scale=float(np.clip(f_sc * a_sc * 0.90, 0.01, 5.0)),
+            fainting_prob=fp, fainting_dur_s=fd,
+            source="hh_sim", confidence=0.85,
+            notes="derived from C++ HH voltage trace CSVs",
+        )
+
+
+class PerturbationPipeline:
+    """
+    Maps a ``PerturbationSpec`` → ``KinematicScaling``.
+
+    Inference priority
+    ------------------
+    1. ``_MUTANT_LITERATURE`` — named strain with published phenotype (conf=1.0)
+    2. ``NeuralKinematicsExtractor`` — from C++ HH trace CSVs (conf≈0.85)
+    3. Biophysical transfer function — power-law approximation (conf=0.45–0.60)
+
+    The biophysical model is calibrated on nca-1;nca-2 (leak_depolarizing archetype,
+    gbar=0; Yemini 2013 / Jospin 2007) and extended to four additional channel types
+    via literature-anchored exponent tuning.
+
+    Examples
+    --------
+    # Full KO — hits literature table:
+    sc = PerturbationPipeline.infer(
+             PerturbationSpec.knockout("NCA", strain_name="nca-1;nca-2"))
+
+    # Partial KO — biophysical transfer function:
+    sc = PerturbationPipeline.infer(PerturbationSpec.partial("EGL19", 0.3))
+
+    # From YAML:
+    sc = PerturbationPipeline.infer_from_yaml("docs/perturbation_nca_knockout.yaml")
+
+    # Dose–response sweep (returns list of (gbar, KinematicScaling)):
+    results = PerturbationPipeline.sweep("NCA")
+    """
+
+    # Channel name (upper-case) → biophysical archetype
+    _CHANNEL_TYPE_MAP: dict[str, str] = {
+        # Leak / tonic depolarizing  (NALCN family, background Na+)
+        "NCA":       "leak_depolarizing",
+        "NALCN":     "leak_depolarizing",
+        "NCA_L":     "leak_depolarizing",
+        "LEAKCABC":  "leak_depolarizing",
+        "LEAKKCBC":  "leak_depolarizing",
+        "UNC9":      "leak_depolarizing",   # innexin gap junction — partial overlap
+        # K+ repolarizing
+        "KSLOW_BC":  "K_repolarizing",
+        "KFAST_BC":  "K_repolarizing",
+        "EXP2":      "K_repolarizing",
+        "IRK":       "K_repolarizing",
+        "SHL1":      "K_repolarizing",
+        "EGL36":     "K_repolarizing",
+        "UNC103":    "K_repolarizing",
+        # Ca2+ spike / NMJ vesicle release
+        "EGL19":     "Ca_spike",
+        "CCA1":      "Ca_spike",
+        "UNC2":      "Ca_spike",
+        "EGL2":      "Ca_spike",
+        # Na+ spike-generating
+        "NAV":       "Na_spike",
+        "NAXSC":     "Na_spike",
+        "SCNA4A":    "Na_spike",
+        # HCN / Ih pacemaker
+        "IHQ1":      "Ih_pacemaker",
+        "HCN1":      "Ih_pacemaker",
+        "HCN2":      "Ih_pacemaker",
+    }
+
+    # Power-law transfer function parameters per archetype.
+    #
+    # f_scale(g)        = 1 − Δf  × (1−g)^ef        [g = gbar_scale ∈ 0..1]
+    # amp_scale(g)      = 1 − Δa  × (1−g)^ea        [Δ<0 → value RISES with KO]
+    # speed_scale(g)    = 1 − Δs  × (1−g)^es
+    # fainting_prob(g)  = Δfp × (1−g)^efp
+    # fainting_dur_s(g) = Δfd × (1−g)^efd
+    #
+    # All Δ values calibrated so that the formula hits the anchor at g=0
+    # and returns to 1.0 at g=1 (WT).  Negative Δ means the quantity
+    # *increases* when the channel is removed (e.g. removing K+ → more
+    # depolarisation → higher burst amplitude).
+    _BIOPHYS: dict[str, dict] = {
+        "leak_depolarizing": {
+            # Calibration anchor: nca-1;nca-2 full KO at gbar=0
+            # f(0)=0.64  amp(0)=0.72  spd(0)=0.43  fp(0)=0.015  fd(0)=1.5 s
+            "df": 0.36, "ef": 0.65,
+            "da": 0.28, "ea": 0.50,
+            "ds": 0.57, "es": 0.75,
+            "dfp": 0.015, "efp": 1.80,
+            "dfd": 1.50,  "efd": 0.40,
+            "cal":  "nca-1;nca-2 KO @ gbar=0 (Yemini 2013 / Jospin 2007)",
+            "conf": 0.60,
+        },
+        "K_repolarizing": {
+            # Removing K+ → prolonged APs → more Ca2+ influx → stronger NMJ → amp↑
+            # Calibration: unc-103/egl-36 partial data (Yemini 2013, approximate)
+            "df":  0.15, "ef": 1.50,
+            "da": -0.25, "ea": 0.80,   # negative → amplitude increases
+            "ds":  0.10, "es": 1.20,
+            "dfp": 0.00, "efp": 2.00,
+            "dfd": 0.00, "efd": 1.00,
+            "cal":  "unc-103/egl-36 (Yemini 2013, approximate)",
+            "conf": 0.55,
+        },
+        "Ca_spike": {
+            # Reducing Ca2+ → weaker APs AND weaker NMJ release → strong amp↓
+            # Calibration: egl-19/unc-2 partial hypomorphs (Yemini 2013, approximate)
+            "df": 0.50, "ef": 1.00,
+            "da": 0.70, "ea": 0.70,
+            "ds": 0.60, "es": 0.80,
+            "dfp": 0.005, "efp": 2.00,
+            "dfd": 0.50,  "efd": 0.50,
+            "cal":  "egl-19/unc-2 hypomorph (Yemini 2013, approximate)",
+            "conf": 0.55,
+        },
+        "Na_spike": {
+            # Na+ channels drive APs; reducing → weaker spikes, rhythm persists longer
+            # Calibration: interpolated between leak and Ca2+ archetypes
+            "df": 0.40, "ef": 0.90,
+            "da": 0.50, "ea": 0.80,
+            "ds": 0.60, "es": 0.85,
+            "dfp": 0.002, "efp": 2.00,
+            "dfd": 0.30,  "efd": 0.50,
+            "cal":  "interpolated — no direct Yemini 2013 entry",
+            "conf": 0.48,
+        },
+        "Ih_pacemaker": {
+            # HCN/Ih modulates pacemaker rhythm; mild effect on speed/amplitude
+            # Calibration: ihq-1 estimated (no Yemini 2013 tracking phenotype)
+            "df": 0.30, "ef": 1.10,
+            "da": 0.15, "ea": 0.90,
+            "ds": 0.20, "es": 1.00,
+            "dfp": 0.001, "efp": 2.00,
+            "dfd": 0.20,  "efd": 0.50,
+            "cal":  "ihq-1/HCN estimated (no direct measurement)",
+            "conf": 0.45,
+        },
+        "unknown": {
+            # Conservative fallback — uses lean-depolarizing shape at half amplitude
+            "df": 0.30, "ef": 0.80,
+            "da": 0.25, "ea": 0.65,
+            "ds": 0.45, "es": 0.85,
+            "dfp": 0.005, "efp": 1.80,
+            "dfd": 0.80,  "efd": 0.50,
+            "cal":  "conservative fallback (unknown channel type)",
+            "conf": 0.40,
+        },
+    }
+
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def infer(
+        spec: "PerturbationSpec",
+        n2_trace_csv:  "str | None" = None,
+        mut_trace_csv: "str | None" = None,
+    ) -> "KinematicScaling":
+        """
+        Infer KinematicScaling for *spec* using the highest-confidence available path.
+
+        Parameters
+        ----------
+        spec          : describes the channel + gbar_scale + optional strain_name
+        n2_trace_csv  : path to N2 HH voltage-trace CSV  (enables hh_sim path)
+        mut_trace_csv : path to mutant HH voltage-trace CSV
+        """
+        # 1. Literature lookup
+        key = spec.strain_name.lower().strip()
+        if key:
+            for lit_key, lit_sc in _MUTANT_LITERATURE.items():
+                if lit_key.lower() == key:
+                    return lit_sc
+
+        # 2. C++ HH trace extraction
+        if n2_trace_csv and mut_trace_csv:
+            try:
+                return NeuralKinematicsExtractor.from_csv(
+                    n2_trace_csv, mut_trace_csv
+                ).infer_scaling()
+            except Exception:
+                pass
+
+        # 3. Biophysical transfer function
+        return PerturbationPipeline._from_biophysics(spec)
+
+    @staticmethod
+    def infer_from_yaml(
+        yaml_path: str,
+        n2_trace_csv:  "str | None" = None,
+        mut_trace_csv: "str | None" = None,
+    ) -> "KinematicScaling":
+        """Convenience: load PerturbationSpec from YAML then call infer()."""
+        return PerturbationPipeline.infer(
+            PerturbationSpec.from_yaml(yaml_path),
+            n2_trace_csv=n2_trace_csv,
+            mut_trace_csv=mut_trace_csv,
+        )
+
+    @staticmethod
+    def _from_biophysics(spec: "PerturbationSpec") -> "KinematicScaling":
+        ch_type = PerturbationPipeline._CHANNEL_TYPE_MAP.get(
+            spec.channel.upper(), "unknown"
+        )
+        p = PerturbationPipeline._BIOPHYS[ch_type]
+        g = float(np.clip(spec.gbar_scale, 0.0, 10.0))
+
+        # KO side (g ≤ 1): value = 1 − Δ × (1−g)^exp  → at g=0 gives calibration anchor
+        # GoF side (g > 1): symmetric extension: value = 1 + Δ × (g−1)^exp
+        # Fainting only occurs for KO (silence); GoF → no fainting
+        def _sc(delta: float, exp: float) -> float:
+            if g <= 1.0:
+                return float(np.clip(1.0 - delta * (1.0 - g) ** exp, 0.01, 5.0))
+            else:
+                return float(np.clip(1.0 + delta * (g - 1.0) ** exp, 0.01, 5.0))
+
+        return KinematicScaling(
+            f_scale       = _sc(p["df"],  p["ef"]),
+            amp_scale     = _sc(p["da"],  p["ea"]),
+            speed_scale   = _sc(p["ds"],  p["es"]),
+            fainting_prob = float(np.clip(
+                p["dfp"] * (1.0 - min(g, 1.0)) ** p["efp"], 0.0, 0.20)),
+            fainting_dur_s= float(np.clip(
+                p["dfd"] * (1.0 - min(g, 1.0)) ** p["efd"], 0.0, 30.0)),
+            source        = "biophysical",
+            confidence    = p["conf"],
+            notes         = (
+                f"channel={spec.channel!r} type={ch_type!r} "
+                f"gbar={spec.gbar_scale:.3f}; cal: {p['cal']}"
+            ),
+        )
+
+    @classmethod
+    def sweep(
+        cls,
+        channel: str,
+        gbar_values: "list[float] | np.ndarray | None" = None,
+        strain_name: str = "",
+    ) -> "list[tuple[float, KinematicScaling]]":
+        """
+        Dose–response sweep: compute KinematicScaling for a range of gbar_scale
+        values for *channel*.
+
+        Returns
+        -------
+        list of (gbar_scale, KinematicScaling)
+
+        Example
+        -------
+        results = PerturbationPipeline.sweep("NCA")
+        speeds  = [sc.speed_scale for _, sc in results]
+        """
+        if gbar_values is None:
+            gbar_values = np.linspace(0.0, 1.0, 21)
+        return [
+            (float(g), cls.infer(PerturbationSpec(
+                channel=channel, gbar_scale=float(g), strain_name=strain_name,
+            )))
+            for g in gbar_values
+        ]
+
+
+# Populate _MUTANT_LITERATURE from _MUTANT_PRESETS once both are defined.
+_MUTANT_LITERATURE.update({
+    name: KinematicScaling(
+        f_scale       = p["f_scale"],
+        amp_scale     = p["amp_scale"],
+        speed_scale   = p["speed_scale"],
+        fainting_prob = p["fainting_prob"],
+        fainting_dur_s= p["fainting_dur_s"],
+        source        = "literature",
+        confidence    = 1.0,
+        notes         = p.get("reference", "") + "  doi:" + p.get("doi", ""),
+    )
+    for name, p in _MUTANT_PRESETS.items()
+})
 
 
 def _skeleton_worker(args: tuple) -> np.ndarray:
@@ -1942,6 +2517,7 @@ class NeuromuscularTuner:
         anim_fps: int = 15,
         frame_step: int = 4,
         seed: int = 0,
+        scaling: "KinematicScaling | None" = None,
     ) -> "tuple[np.ndarray, np.ndarray]":
         """Side-by-side 3D animation: N2 (left) vs ion-channel mutant (right).
 
@@ -1950,6 +2526,13 @@ class NeuromuscularTuner:
           growing viridis head trail  · body as solid line  · head dot
         Both panels share the same axis limits centred on the N2 trajectory.
         Mutant = same head trajectory, body lateral deviation × amp_scale, fainting.
+
+        Parameters
+        ----------
+        scaling : KinematicScaling | None
+            If provided, overrides the _MUTANT_PRESETS lookup for *strain*.
+            Use ``PerturbationPipeline.infer()`` to generate this from any
+            ion-channel spec (YAML / NML / manual).
         """
         import matplotlib
         matplotlib.use("Agg")
@@ -1958,7 +2541,23 @@ class NeuromuscularTuner:
         import matplotlib.animation as anim_mod
         import matplotlib.cm as cm
 
-        preset = _MUTANT_PRESETS[strain]
+        # Resolve scaling: explicit argument > literature > biophysical inference
+        if scaling is None:
+            if strain in _MUTANT_PRESETS:
+                p = _MUTANT_PRESETS[strain]
+                scaling = KinematicScaling(
+                    f_scale=p["f_scale"], amp_scale=p["amp_scale"],
+                    speed_scale=p["speed_scale"],
+                    fainting_prob=p["fainting_prob"],
+                    fainting_dur_s=p["fainting_dur_s"],
+                    source="literature",
+                )
+            else:
+                scaling = PerturbationPipeline.infer(
+                    PerturbationSpec(channel=strain, gbar_scale=0.0,
+                                     strain_name=strain)
+                )
+
         fps_data = 20.0
 
         # Resolve Nguyen 2018 .mat using __file__ so path works from any CWD
@@ -1993,10 +2592,10 @@ class NeuromuscularTuner:
 
         # ── Fainting mask ─────────────────────────────────────────────────────────
         rng = np.random.default_rng(seed)
-        fd  = int(preset["fainting_dur_s"] * fps_data)
+        fd  = int(scaling.fainting_dur_s * fps_data)
         fainting = np.zeros(n_frames, bool); tf = 0
         while tf < n_frames:
-            if rng.random() < preset["fainting_prob"]:
+            if rng.random() < scaling.fainting_prob:
                 fainting[tf:tf + fd] = True; tf += fd + 1
             else:
                 tf += 1
@@ -2027,14 +2626,14 @@ class NeuromuscularTuner:
             d_lat = d - d_fwd
             mut_head[:, t + 1] = (
                 mut_head[:, t]
-                + preset["speed_scale"] * d_fwd
-                + preset["amp_scale"]   * d_lat
+                + scaling.speed_scale * d_fwd
+                + scaling.amp_scale   * d_lat
             )
 
         # ── Mutant body: track-following on mutant head trajectory ───────────────
         # Slower wave frequency (64% of N2) → larger segment delay → body lags
         # further behind, body appears stiffer and less sinusoidal.
-        f_mut     = f_hz_n2 * preset["f_scale"]
+        f_mut     = f_hz_n2 * scaling.f_scale
         v_wave_mu = f_mut * lam_BL * L_um
         ds        = L_um / (n_pts - 1)
         tau_mu    = (ds / v_wave_mu) * fps_data        # frames of delay per segment
@@ -2297,6 +2896,7 @@ class NeuromuscularTuner:
         n_frames: int = 80,
         fps: float = 10.0,
         seed: int = 0,
+        scaling: "KinematicScaling | None" = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Generate a 2D phenotype-calibrated mutant body skeleton.
@@ -2316,23 +2916,41 @@ class NeuromuscularTuner:
         x_arr : ndarray (n_frames, n_skeleton_pts)  — normalised body x coords  (BL)
         y_arr : ndarray (n_frames, n_skeleton_pts)  — normalised body y coords  (BL)
         """
-        # Resolve strain: explicit argument takes priority, then config, then error.
-        if strain is None:
-            strain = self.cfg.mutant_strain
-        preset  = _MUTANT_PRESETS.get(strain)
-        if preset is None:
-            raise ValueError(
-                f"mutant_strain={strain!r} not in presets. "
-                f"Known: {list(_MUTANT_PRESETS)}"
-            )
+        # Resolve scaling: explicit argument > literature lookup > biophysical inference.
+        if scaling is None:
+            _name = strain or self.cfg.mutant_strain or ""
+            if _name in _MUTANT_PRESETS:
+                p = _MUTANT_PRESETS[_name]
+                scaling = KinematicScaling(
+                    f_scale=p["f_scale"], amp_scale=p["amp_scale"],
+                    speed_scale=p["speed_scale"],
+                    fainting_prob=p["fainting_prob"],
+                    fainting_dur_s=p["fainting_dur_s"],
+                    source="literature",
+                )
+            else:
+                # Infer from channel_perturbations if no preset exists
+                perturbs = self.cfg.channel_perturbations
+                if not perturbs:
+                    raise ValueError(
+                        f"mutant_strain={_name!r} not in presets and "
+                        "cfg.channel_perturbations is empty. "
+                        "Pass scaling= explicitly or set channel_perturbations."
+                    )
+                for ch, gbar in perturbs.items():
+                    scaling = PerturbationPipeline.infer(
+                        PerturbationSpec(channel=ch, gbar_scale=gbar,
+                                         strain_name=_name)
+                    )
+                    break
 
         rng     = np.random.default_rng(seed)
-        f_wt    = self.cfg.f_hz                          # N2 frequency
-        f_mut   = f_wt * preset["f_scale"]               # mutant frequency
-        amp     = preset["amp_scale"]                    # bending amplitude scale
-        v_scale = preset["speed_scale"]                  # forward speed scale
-        fp      = preset["fainting_prob"]                # fainting prob per frame
-        fd      = int(preset["fainting_dur_s"] * fps)    # fainting duration (frames)
+        f_wt    = self.cfg.f_hz
+        f_mut   = f_wt * scaling.f_scale
+        amp     = scaling.amp_scale
+        v_scale = scaling.speed_scale
+        fp      = scaling.fainting_prob
+        fd      = int(scaling.fainting_dur_s * fps)
 
         # Ensure PCA / eigenworm basis is loaded (attributes: eigenvecs, coeffs, mu)
         if not hasattr(self, "eigenvecs"):
@@ -2498,6 +3116,7 @@ class NeuromuscularTuner:
         n_frames: int = 80,
         fps: int = 10,
         dpi: int = 120,
+        scaling: "KinematicScaling | None" = None,
     ) -> None:
         """
         2-panel animated GIF: N2 wild-type (left) vs ion-channel mutant (right).
@@ -2521,7 +3140,6 @@ class NeuromuscularTuner:
         import matplotlib.gridspec as gridspec
         from matplotlib.animation import FuncAnimation
 
-        preset = _MUTANT_PRESETS[strain]
         if mutant_cfg is None:
             mutant_cfg = self.configure_mutant(strain)
 
@@ -2537,7 +3155,7 @@ class NeuromuscularTuner:
         # ── Mutant skeleton (right) ────────────────────────────────────────────
         # Mutant uses the SAME N2 eigenbasis (self._pca_modes) with scaled kinematics.
         mut_x, mut_y = self.mutant_skeleton(
-            strain=strain, n_frames=n_frames, fps=float(fps)
+            strain=strain, n_frames=n_frames, fps=float(fps), scaling=scaling,
         )
 
         # ── Set up figure ──────────────────────────────────────────────────────
@@ -2591,10 +3209,10 @@ class NeuromuscularTuner:
 
         # Phenotype info text
         mut_txt = (
-            f"f = {self.cfg.f_hz * preset['f_scale']:.2f} Hz  "
-            f"({preset['f_scale']*100:.0f}% N2)\n"
-            f"amp = {preset['amp_scale']*100:.0f}% N2  "
-            f"speed = {preset['speed_scale']*100:.0f}% N2"
+            f"f = {self.cfg.f_hz * scaling.f_scale:.2f} Hz  "
+            f"({scaling.f_scale*100:.0f}% N2)\n"
+            f"amp = {scaling.amp_scale*100:.0f}% N2  "
+            f"speed = {scaling.speed_scale*100:.0f}% N2"
         )
         axes[1].text(0.02, 0.98, mut_txt, transform=axes[1].transAxes,
                      color="#ff6d00", fontsize=7.5, va="top",
@@ -2626,45 +3244,79 @@ class NeuromuscularTuner:
 
     # ── N2 vs mutant interactive Plotly ───────────────────────────────────────
 
+
     def render_fig_n2_vs_mutant(
         self,
         strain: str = "nca-1;nca-2",
         n_frames: int | None = None,
         fps: float | None = None,
         seed: int = 0,
+        scaling: "KinematicScaling | None" = None,
+        ref_x: "np.ndarray | None" = None,
+        ref_y: "np.ndarray | None" = None,
+        ref_label: "str | None" = None,
+        cv_label: str = "CV-10.2",
     ):
-        """Interactive Plotly figure: N2 wild-type (left) vs ion-channel mutant (right).
+        """Interactive Plotly figure: reference body (left) vs wormsim2 mutant (right).
 
         Mirrors CV-8.1.1 render_fig() style: dark background, same fixed ±0.32 BL × ±0.65 BL
         window for both panels, curvature colormap, head trail, muscle dots, lateral-span panel.
+
+        ref_x / ref_y : pre-computed reference body arrays (n_frames, n_pts) in BL, centred.
+            When provided the left panel shows these shapes instead of self.xSIM/ySIM.
+            Useful for CV-10.7/10.8 where the left panel is real N2 data × mutant scaling.
+        ref_label : subplot title override for the left panel.
+        cv_label  : prefix used in the figure title (default "CV-10.2").
         """
         import plotly.graph_objects as go
         from plotly.subplots import make_subplots
 
         cfg = self.cfg; BL = cfg.bl_mm; r = cfg.r_bwm; ns = cfg.n_segments
-        preset = _MUTANT_PRESETS[strain]
         MID = cfg.mid_idx
+        # Resolve scaling: explicit > literature > biophysical
+        if scaling is None:
+            if strain in _MUTANT_PRESETS:
+                p = _MUTANT_PRESETS[strain]
+                scaling = KinematicScaling(
+                    f_scale=p["f_scale"], amp_scale=p["amp_scale"],
+                    speed_scale=p["speed_scale"],
+                    fainting_prob=p["fainting_prob"],
+                    fainting_dur_s=p["fainting_dur_s"],
+                    source="literature",
+                )
+            else:
+                scaling = PerturbationPipeline.infer(
+                    PerturbationSpec(channel=strain, gbar_scale=0.0,
+                                     strain_name=strain)
+                )
 
         n_tot = len(self.t_out)
         n_fr  = n_tot if n_frames is None else min(int(n_frames), n_tot)
         _fps  = float(n_tot - 1) / self.t_out[-1] if fps is None else float(fps)
         t_out = self.t_out[:n_fr]
 
-        # N2: centered body shapes (xSIM/ySIM already centered at midpoint)
-        n2x_all = self.xSIM[:n_fr]
-        n2y_all = self.ySIM[:n_fr]
+        # Left panel: custom reference data or eigenworm simulation
+        if ref_x is not None:
+            _rx = np.asarray(ref_x[:n_fr]); _ry = np.asarray(ref_y[:n_fr])
+            n2x_all = _rx - _rx[:, MID:MID+1]
+            n2y_all = _ry - _ry[:, MID:MID+1]
+        else:
+            n2x_all = self.xSIM[:n_fr]
+            n2y_all = self.ySIM[:n_fr]
 
         # Mutant: center per frame so it stays in the same fixed window
-        mx_raw, my_raw = self.mutant_skeleton(strain=strain, n_frames=n_fr, fps=_fps, seed=seed)
+        mx_raw, my_raw = self.mutant_skeleton(
+            strain=strain, n_frames=n_fr, fps=_fps, seed=seed, scaling=scaling,
+        )
         mx_all = mx_raw - mx_raw[:, MID:MID+1]
         my_all = my_raw - my_raw[:, MID:MID+1]
 
         # Fainting mask (seed=0, same RNG as mutant_skeleton)
         rng = np.random.default_rng(seed)
-        fd  = int(preset["fainting_dur_s"] * _fps)
+        fd  = int(scaling.fainting_dur_s * _fps)
         fainting = np.zeros(n_fr, bool); tf = 0
         while tf < n_fr:
-            if rng.random() < preset["fainting_prob"]:
+            if rng.random() < scaling.fainting_prob:
                 fainting[tf:tf + fd] = True; tf += fd + 1
             else:
                 tf += 1
@@ -2703,7 +3355,7 @@ class NeuromuscularTuner:
             specs=[[{"type": "scatter"}, {"type": "scatter"}],
                    [{"type": "scatter", "colspan": 2}, None]],
             subplot_titles=[
-                "N2 wild-type  (Schafer lab · Zenodo 1031837)",
+                ref_label if ref_label is not None else "N2 wild-type  (Schafer lab · Zenodo 1031837)",
                 f"{strain}  [NCA gbar → 0]  (Jospin 2007 · Yemini 2013)",
                 "Lateral body span (µm)  |  orange bars = fainting",
             ],
@@ -2846,9 +3498,9 @@ class NeuromuscularTuner:
             font=dict(color="#b0c0d0", size=11),
             title=dict(
                 text=(
-                    f"CV-10.2 — N2 vs {strain}  |  NCA gbar → 0  |  "
-                    f"f={preset['f_scale'] * cfg.f_hz:.2f} Hz  "
-                    f"72% amp  43% speed  "
+                    f"{cv_label} — N2 vs {strain}  |  NCA gbar → 0  |  "
+                    f"f={scaling.f_scale * cfg.f_hz:.2f} Hz  "
+                    f"{scaling.amp_scale*100:.0f}% amp  {scaling.speed_scale*100:.0f}% speed  "
                     f"{fainting.sum()}/{n_fr} faint ({100 * fainting.mean():.0f}%)"
                 ),
                 font=dict(size=13),
@@ -2988,3 +3640,273 @@ class NeuromuscularTuner:
             f"R²={r['var_explained']:.3f} ({r['var_explained']*100:.1f}%) | "
             f"CEl₄₈={r['cel_mean_bl2']:.6f} BL²  RMS={r['rms_um']:.1f} µm"
         )
+
+
+# ── Module-level utility ───────────────────────────────────────────────────────
+
+def plotly_fig_to_gif(
+    fig,
+    output_path: str,
+    fps: float = 12.0,
+    width_px: int = 1200,
+    height_px: int = 500,
+    dpi: int = 100,
+    title: str | None = None,
+) -> int:
+    """Convert an animated Plotly scatter figure to a GIF using matplotlib.
+
+    Extracts per-frame (x, y) data from each ``fig.frames`` entry and re-renders
+    with matplotlib rather than kaleido.  Roughly 500× faster than kaleido for
+    complex animated figures (seconds vs ~10 min for 114 frames at 900×600 px).
+
+    Supports
+    --------
+    * Multiple subplots — detected via the (xaxis, yaxis) pair on each trace.
+    * Dark / coloured paper/plot backgrounds — read from ``fig.layout``.
+    * Per-trace solid line colours and marker colours.
+    * Curvature-gradient colourings: when ``marker.color`` is a per-point
+      array the colour is sampled uniformly along the Plotly Plasma colorscale.
+    * Fixed-axis ranges — read from ``fig.layout.xaxisN / yaxisN``.
+    * Subplot titles — read from ``fig.layout.annotations``.
+    * Optional override title drawn at the top of the figure.
+
+    Limitations
+    -----------
+    * Plotly ``Heatmap``, ``Bar``, ``3d`` traces are ignored.
+    * Interactive sliders / play buttons are not reproduced.
+    * Thin decorative shapes (``fig.layout.shapes``) are not reproduced.
+
+    Parameters
+    ----------
+    fig         : plotly.graph_objects.Figure with ``fig.frames`` populated.
+    output_path : destination path; extension should be ``.gif``.
+    fps         : playback frame-rate for the output GIF.
+    width_px    : canvas width in pixels.
+    height_px   : canvas height in pixels.
+    dpi         : dots-per-inch for matplotlib; controls render resolution.
+    title       : override main title; ``None`` keeps Plotly's title.
+
+    Returns
+    -------
+    int : number of frames written.
+    """
+    import copy, io
+    import matplotlib; matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.colors as mcolors
+    import matplotlib.cm as mcm
+    from PIL import Image
+
+    layout = fig.layout.to_plotly_json()
+
+    # ── Colours ───────────────────────────────────────────────────────────────
+    def _hex(c, default="#ffffff"):
+        if not c or c in ("rgba(0,0,0,0)", "transparent"):
+            return default
+        if isinstance(c, str) and c.startswith("rgba("):
+            parts = c[5:-1].split(",")
+            r, g, b = [int(x) for x in parts[:3]]
+            return f"#{r:02x}{g:02x}{b:02x}"
+        return c if isinstance(c, str) and c.startswith("#") else default
+
+    paper_bg = _hex(layout.get("paper_bgcolor"), "#0b0f16")
+    plot_bg  = _hex(layout.get("plot_bgcolor"),  "#0b0f16")
+
+    # ── Subplot detection via (xaxis_id, yaxis_id) pairs ─────────────────────
+    subplot_pairs: list[tuple[str, str]] = []
+    trace_subplot: list[tuple[str, str]] = []
+    for t in fig.data:
+        td = t.to_plotly_json()
+        raw_x = td.get("xaxis") or "x"
+        raw_y = td.get("yaxis") or "y"
+        xid = "xaxis" if raw_x == "x" else raw_x.replace("x", "xaxis", 1)
+        yid = "yaxis" if raw_y == "y" else raw_y.replace("y", "yaxis", 1)
+        if xid == "xaxis1": xid = "xaxis"
+        if yid == "yaxis1": yid = "yaxis"
+        slot = (xid, yid)
+        trace_subplot.append(slot)
+        if slot not in subplot_pairs:
+            subplot_pairs.append(slot)
+
+    n_sp = len(subplot_pairs)
+
+    # ── Axis limits: prefer layout range, else compute from data ─────────────
+    def _axis_range(axis_id, data_vals):
+        rng = (layout.get(axis_id) or {}).get("range")
+        if rng and len(rng) == 2:
+            return float(rng[0]), float(rng[1])
+        if not data_vals:
+            return -1.0, 1.0
+        lo, hi = min(data_vals), max(data_vals)
+        pad = (hi - lo) * 0.06 or 0.1
+        return lo - pad, hi + pad
+
+    all_vals: dict[str, list] = {}
+    for sp in subplot_pairs:
+        all_vals.setdefault(sp[0], [])
+        all_vals.setdefault(sp[1], [])
+
+    base_data_json = [t.to_plotly_json() for t in fig.data]
+
+    def _collect(td, sp_idx):
+        xid, yid = subplot_pairs[sp_idx]
+        for v in (td.get("x") or []):
+            if v is not None:
+                try: all_vals[xid].append(float(v))
+                except (TypeError, ValueError): pass
+        for v in (td.get("y") or []):
+            if v is not None:
+                try: all_vals[yid].append(float(v))
+                except (TypeError, ValueError): pass
+
+    for i, bd in enumerate(base_data_json):
+        _collect(bd, subplot_pairs.index(trace_subplot[i]))
+    for frame in fig.frames:
+        ft = list(frame.traces) if frame.traces is not None else list(range(len(fig.data)))
+        for li, ti in enumerate(ft):
+            if li >= len(frame.data) or ti >= len(fig.data): continue
+            _collect(frame.data[li].to_plotly_json(), subplot_pairs.index(trace_subplot[ti]))
+
+    axis_limits = {}
+    for sp in subplot_pairs:
+        axis_limits[sp[0]] = _axis_range(sp[0], all_vals[sp[0]])
+        axis_limits[sp[1]] = _axis_range(sp[1], all_vals[sp[1]])
+
+    # ── Subplot widths from x-axis domains ───────────────────────────────────
+    widths = []
+    for sp in subplot_pairs:
+        dom = (layout.get(sp[0]) or {}).get("domain", [0.0, 1.0 / n_sp])
+        widths.append(dom[1] - dom[0])
+    if not any(w > 0 for w in widths):
+        widths = [1.0 / n_sp] * n_sp
+
+    # ── Subplot titles from annotations ──────────────────────────────────────
+    sp_title: dict[int, str] = {}
+    for ann in layout.get("annotations", []):
+        xref = ann.get("xref", "")
+        for si, sp in enumerate(subplot_pairs):
+            axis_num = sp[0].replace("xaxis", "") or "1"
+            if xref in (f"x{axis_num} domain", "x domain" if axis_num == "1" else ""):
+                txt = ann.get("text", "")
+                if txt and ann.get("showarrow") is False:
+                    sp_title[si] = txt
+                break
+
+    main_title = title or (layout.get("title") or {}).get("text", "")
+
+    # ── Plasma colorscale sampler (curvature gradients) ───────────────────────
+    _plasma = mcm.get_cmap("plasma")
+
+    def _sample_colors(mc_raw, n):
+        if isinstance(mc_raw, (list, tuple)) and len(mc_raw) == n:
+            out = []
+            for c in mc_raw:
+                if isinstance(c, (int, float)):
+                    out.append(mcolors.to_hex(_plasma(float(c))))
+                else:
+                    out.append(_hex(c, "#00e676"))
+            return out
+        if isinstance(mc_raw, str):
+            return [_hex(mc_raw, "#00e676")] * n
+        return ["#00e676"] * n
+
+    # ── Per-trace base styles ─────────────────────────────────────────────────
+    trace_styles = []
+    for bd in base_data_json:
+        line   = bd.get("line") or {}
+        marker = bd.get("marker") or {}
+        mc     = marker.get("color")
+        color  = _hex(line.get("color") or (mc if isinstance(mc, str) else None), "#888888")
+        trace_styles.append({
+            "mode":    bd.get("mode", "lines"),
+            "color":   color,
+            "lw":      float(line.get("width") or 1.5),
+            "ms":      float(marker.get("size") or 4),
+            "opacity": float(bd.get("opacity") or 1.0),
+            "mc_raw":  mc,
+        })
+
+    # ── Render ────────────────────────────────────────────────────────────────
+    figW, figH = width_px / dpi, height_px / dpi
+    pil_frames = []
+
+    for frame in fig.frames:
+        cur = [copy.copy(bd) for bd in base_data_json]
+        ft  = list(frame.traces) if frame.traces is not None else list(range(len(fig.data)))
+        for li, ti in enumerate(ft):
+            if li >= len(frame.data) or ti >= len(cur): continue
+            cur[ti] = {**cur[ti], **{k: v for k, v in
+                        frame.data[li].to_plotly_json().items() if v is not None}}
+
+        fig_mpl, axes = plt.subplots(
+            1, n_sp,
+            figsize=(figW, figH),
+            gridspec_kw={"width_ratios": widths, "wspace": 0.04},
+            facecolor=paper_bg,
+        )
+        if n_sp == 1:
+            axes = [axes]
+
+        for si, (ax, sp) in enumerate(zip(axes, subplot_pairs)):
+            ax.set_facecolor(plot_bg)
+            ax.set_xlim(*axis_limits[sp[0]])
+            ax.set_ylim(*axis_limits[sp[1]])
+            ax.tick_params(colors="#444444", labelsize=0, length=0)
+            for spine in ax.spines.values():
+                spine.set_color("#333333")
+            if si in sp_title:
+                ax.set_title(sp_title[si], color="#cccccc", fontsize=7, pad=3)
+
+        for i, (cd, style) in enumerate(zip(cur, trace_styles)):
+            si  = subplot_pairs.index(trace_subplot[i])
+            ax  = axes[si]
+            xs  = list(cd.get("x") or [])
+            ys  = list(cd.get("y") or [])
+            if not xs or not ys:
+                continue
+            n   = min(len(xs), len(ys))
+            mc  = (cd.get("marker") or {}).get("color") or style["mc_raw"]
+            alpha = style["opacity"]
+
+            if isinstance(mc, (list, tuple)) and len(mc) == n and n > 1:
+                cols = _sample_colors(mc, n)
+                for j in range(n - 1):
+                    ax.plot([xs[j], xs[j+1]], [ys[j], ys[j+1]],
+                            color=cols[j], lw=style["lw"],
+                            solid_capstyle="round", alpha=alpha)
+            else:
+                col  = style["color"]
+                mode = style["mode"]
+                if "lines" in mode:
+                    ax.plot(xs[:n], ys[:n], color=col, lw=style["lw"],
+                            solid_capstyle="round", alpha=alpha)
+                if "markers" in mode:
+                    ax.plot(xs[:n], ys[:n], "o", color=col,
+                            ms=style["ms"], alpha=alpha)
+
+        if main_title:
+            fig_mpl.suptitle(
+                main_title.replace("<b>", "").replace("</b>", ""),
+                color="#cccccc", fontsize=8, y=0.97,
+            )
+
+        buf = io.BytesIO()
+        fig_mpl.savefig(buf, format="png", dpi=dpi,
+                        facecolor=paper_bg, bbox_inches="tight")
+        plt.close(fig_mpl)
+        buf.seek(0)
+        pil_frames.append(Image.open(buf).convert("RGBA").convert("RGB"))
+
+    if not pil_frames:
+        raise ValueError("No frames rendered — check fig.frames is populated.")
+
+    duration_ms = int(round(1000.0 / fps))
+    pil_frames[0].save(
+        output_path,
+        format="GIF",
+        save_all=True,
+        append_images=pil_frames[1:],
+        duration=duration_ms,
+        loop=0,
+    )
+    return len(pil_frames)

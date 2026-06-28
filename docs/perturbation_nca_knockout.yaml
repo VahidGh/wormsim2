@@ -1,6 +1,7 @@
 # PerturbationConfig: nca-1;nca-2 double knockout
 # Sets NCA (NALCN) conductance to 0 in all motoneurons.
 # Reference: Jospin 2007 (doi:10.1523/jneurosci.1618-07.2007) + Gao 2015 + Yemini 2013
+strain_name: "nca-1;nca-2"
 perturbations:
   - channel: NCA
     gbar_scale: 0.0
