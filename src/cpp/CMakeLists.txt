@@ -33,6 +33,10 @@ add_library(wormsim2_neural STATIC
 target_include_directories(wormsim2_neural PUBLIC include)
 target_link_libraries(wormsim2_neural PUBLIC wormsim2_io)
 target_compile_features(wormsim2_neural PUBLIC cxx_std_20)
+if(WORMSIM2_HAS_OPENMP)
+    target_link_libraries(wormsim2_neural PUBLIC OpenMP::OpenMP_CXX)
+    target_compile_definitions(wormsim2_neural PUBLIC WORMSIM2_OPENMP=1)
+endif()
 
 # ---------------------------------------------------------------------------
 # body — eigenworm reduced-order body + WCON output

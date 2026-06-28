@@ -1,0 +1,101 @@
+name: SLURM Deploy (Apptainer Build + Release)
+
+# Tag-triggered workflow: builds the Apptainer/Singularity image,
+# optionally signs it, and uploads the .sif as a GitHub Release asset
+# ready for scp to CINECA G100.
+#
+# References:
+#   docs/install/hpc_slurm.md — operational guide
+#   docs/install/github_actions.md — CI guide
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag (e.g. v0.11.0) — only for artifact naming'
+        required: false
+        default: 'manual-dispatch'
+
+jobs:
+  build-and-sign-sif:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Apptainer
+        uses: eWaterCycle/setup-apptainer@v2
+        with:
+          apptainer-version: 1.3.4
+
+      - name: Show Apptainer version
+        run: apptainer --version
+
+      - name: Build wormsim2.sif
+        # singularity/wormsim2.def pulls nvidia/cuda:12.4 base (~3 GB)
+        # and installs JAX[cuda12] + C++ build tools + OpenMP.
+        run: |
+          sudo apptainer build wormsim2.sif singularity/wormsim2.def
+
+      - name: Inspect image
+        run: apptainer inspect wormsim2.sif | tee wormsim2-sif-info.txt
+
+      - name: Smoke-run (Python hardware detection)
+        run: |
+          apptainer exec wormsim2.sif python3 -c "
+          import sys; sys.path.insert(0,'$GITHUB_WORKSPACE/src/python')
+          from hardware import detect_hardware
+          hw = detect_hardware()
+          print(hw.summary())
+          " | tee wormsim2-sif-smoke.txt
+
+      - name: Compute SHA-256 checksum
+        run: sha256sum wormsim2.sif > wormsim2.sif.sha256
+
+      - name: Sign .sif (GPG — two-tier strategy)
+        # Tier 1: real GPG signing when GPG_PRIVATE_KEY secret is set.
+        # Tier 2: SHA-256 only (no signing key — CI fallback).
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE:  ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          if [ -n "$GPG_PRIVATE_KEY" ]; then
+            echo "=== Tier 1: GPG signing ==="
+            echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+            echo "$GPG_PASSPHRASE" | gpg --batch --yes --passphrase-fd 0 \
+              --detach-sign --armor --output wormsim2.sif.asc wormsim2.sif
+            gpg --verify wormsim2.sif.asc wormsim2.sif
+            echo "gpg_signed=true" >> $GITHUB_ENV
+          else
+            echo "=== Tier 2: SHA-256 only (no GPG key) ==="
+            echo "sha256_only=true" >> $GITHUB_ENV
+          fi
+          cat wormsim2.sif.sha256
+
+      - name: Upload release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            wormsim2.sif
+            wormsim2.sif.sha256
+            wormsim2-sif-info.txt
+            wormsim2-sif-smoke.txt
+            ${{ env.gpg_signed == 'true' && 'wormsim2.sif.asc' || '' }}
+
+      - name: Upload artifacts (non-tag run)
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: wormsim2-sif-manual
+          path: |
+            wormsim2.sif
+            wormsim2.sif.sha256
+            wormsim2-sif-info.txt
+            wormsim2-sif-smoke.txt

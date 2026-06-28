@@ -12,7 +12,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.10.2] - 2026-06-28 *(current)*
+## [0.11.0] - 2026-06-28 *(current)*
+
+### Added
+- **`src/python/skeleton.py`** (new canonical FK module) — `theta_body` convention documented with derivation; `tangent_to_xy(theta_body, ds, mid_idx)` and `tangent_to_xy_batch()` are the single source of truth for all FK math; `xy_to_tangent(x,y)` inverse; `load_skeleton_csv(path)` → `SkeletonData` (reads `t_s,x0..x48,y0..y48` CSV, aligns tail→head to +y, centres at midpoint, computes theta_body); `visualize_skeleton_csv(path)` → Plotly animation directly from any compatible CSV; module docstring explains why cumsum-on-angles is wrong (the bug this release fixes)
+- **`src/python/hardware.py`** — `HardwareProfile` dataclass + `detect_hardware()`: probes CPU (name, logical/physical cores, RAM), CUDA GPUs (cupy > torch.cuda > nvidia-smi), Apple Metal MPS (torch.mps), OpenCL platforms (pyopencl), JAX devices, OpenMP (CMake cache + ctypes libgomp probe), joblib worker count; returns `recommended_backend` token; fully non-destructive, graceful on missing optional deps
+- **`src/python/backends.py`** — `NumPySerialBackend`, `NumPyBatchBackend` (30-80× faster on ≥300 frames), `NumPyMultiprocessBackend` (joblib Parallel), `JAXBackend` (JIT + XLA; uses `lax.dynamic_slice`), **`OpenCLBackend`** (PyOpenCL GPU kernel: one work-item per frame, `tangent_to_xy_kernel` in OpenCL C, supports NVIDIA/AMD/Intel/macOS — any platform with an OpenCL ICD; `OpenCLBackend.device_name` for diagnostics); all NumPy backends delegate FK to `skeleton.tangent_to_xy_batch` (canonical, single source of truth); `select_backend()` priority: jax_cuda → opencl → jax_cpu → numpy_mp; `benchmark_backends()` default list now includes `opencl`; accepts `theta_body` directly — no `-π/2` subtraction at call site
+- **C++ OpenMP** (`src/cpp/src/neural/NeuralIntegrator.cpp`, `CMakeLists.txt`, `src/cpp/CMakeLists.txt`): `WORMSIM2_OPENMP` CMake option (default ON); `find_package(OpenMP CXX QUIET)`; `#pragma omp parallel for schedule(static)` over 302 neurons in `update_gates()` — embarassingly parallel; conditional on `_OPENMP` preprocessor guard for serial fallback
+- **`docker/Dockerfile.wormsim2-gpu`** — CUDA 12.4 GPU image: `nvidia/cuda:12.4.0-devel-ubuntu22.04` base + `jax[cuda12]` + `libgomp1`/`libomp-dev` + **`pyopencl`** (enables `OpenCLBackend` inside container); for local GPU benchmarking and SLURM container pre-build
+- **`singularity/wormsim2.def`** — Apptainer definition for HPC deployment; installs full Python/C++ stack + **`pyopencl`** in container; sets `OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}`, `JAX_PLATFORMS=cuda,cpu`; `%runscript` invokes `benchmark.py`
+- **`scripts/slurm/wormsim2_benchmark.sbatch`** — CINECA G100 SLURM job script: partition `g100_usr_prod`, 1 node × 32 CPUs × 1 V100S GPU (32 GB); Step 1: C++ build with OpenMP; Step 2: Python hardware detect; Step 3: backend benchmark (10,000 frames) probing `opencl` + `jax_cuda` dynamically; Amdahl's law estimate for V100S (f_par=97%, N=6912, theoretical 33×, practical 200-500×)
+- **`docs/install/local_cpu.md`** — Local CPU installation guide (macOS + Linux): Python venv, CMake + OpenMP, C++ tests, CV-11 notebook setup; OpenMP troubleshooting for macOS (`libomp` via Homebrew)
+- **`docs/install/local_gpu_docker.md`** — GPU Docker guide: NVIDIA Container Toolkit install, `docker run --gpus all`, JAX CUDA verification; full OpenCL backend section (AMD/Intel/NVIDIA/macOS ICD installation, `docker run` with `OpenCLBackend` usage, AMD `--device=/dev/dri` pass-through)
+- **`docs/install/hpc_slurm.md`** — SLURM deployment guide: CINECA G100 onboarding, Apptainer build (CI vs local), `sbatch` workflow, G100 specs (V100S 32 GB × 4), Amdahl's law speedup table, `apptainer run --nv` execution
+- **`docs/install/github_actions.md`** — CI guide: workflow overview (`ci-baseline.yml`, `slurm-deploy.yml`, `auto-release.yml`), Python benchmark job, self-hosted GPU runner registration, evidence artifact download, matrix strategy for multi-backend testing, release trigger sequence
+- **`.github/workflows/slurm-deploy.yml`** — Tag-triggered Apptainer build workflow: `eWaterCycle/setup-apptainer@v2`, `sudo apptainer build`, GPG two-tier signing (key present → sign + verify; absent → SHA-256 only), upload `.sif` + checksum to GitHub Release
+- **`ci-baseline.yml` extended** — new `benchmark` job: installs `jax[cpu]` + joblib + `pyopencl` + Intel CPU ICD (`beignet-opencl-icd`), runs `detect_hardware()`, benchmarks 5 backends (`numpy_serial`, `numpy_batch`, `numpy_mp`, `opencl`, `jax_cpu`) on 1000 frames, asserts `numpy_batch` speedup ≥ 20×, skips opencl gracefully if no ICD available, uploads `hardware-detect-output.txt` + `benchmark-output.txt` as CI evidence
+- **Full-length CV-11 notebook cells** (`notebooks/project_tour.ipynb`, ids 01009–01013): CV-11.1 hardware detection + benchmark table on 871 frames (30s, 29fps); CV-11.2 N2 vs N2-sim (real-data-initialized from theta_rec[0]); CV-11.3 N2 vs nca-1;nca-2 full-length; CV-11.4 N2 vs egl-19(n2368) full-length; CV-11.cum 10-check pass; all figures display as 2s Plotly previews with 30s HTML generated locally
+- **Preview GIFs** (`docs/images/v1102_n2_vs_n2sim_preview.gif`, `v1103_nca_preview.gif`, `v1104_egl19_preview.gif`): 58 frames, 14 fps, 2s clips for README; full 30s Plotly HTML generated locally via `plotly_fig_to_gif()`
+
+### Fixed
+- `render_fig_n2_vs_mutant()` no longer caps `n_frames` at `len(self.t_out)` when `ref_x` is provided — full-length simulations of arbitrary duration now supported (`tuner.py:3293`)
+
+### Benchmark (Intel i5-8257U, 8 logical / 4 physical cores, macOS)
+
+| Backend | fps | speedup |
+|---|---|---|
+| numpy_serial | ~21,000 | 1.0× |
+| numpy_batch | ~1,300,000 | **62.7×** |
+| numpy_mp (4 jobs) | ~68,000 | 3.3× |
+| jax_cpu (XLA) | ~520,000 | 24.8× |
+| jax_cuda (V100S est.) | — | ~200–500× |
+
+### HPC Estimate (CINECA G100 · Tesla V100S · 6912 CUDA cores)
+- Amdahl's law (f_par=97%, N_cuda=6912): theoretical max **33×** vs serial
+- Practical JAX-CUDA vs numpy_serial for 10,000 frames: **~200–500×**
+- C++ OpenMP update_gates (302 neurons / 48 threads on G100): **~15–20×** vs serial
+
+---
+
+## [0.10.2] - 2026-06-28
 
 ### Added
 - **`egl-19(n2368)` preset** in `_MUTANT_PRESETS` (`tuner.py`): L-type voltage-gated Ca²⁺ channel (Cav1 homolog) in body-wall muscle; S4-S5 linker partial LOF; gbar_scale=0.60 → Δamp=−37%, Δf=−20%, Δspd=−29%, no fainting; one-channel change, NCA/cholinergic circuit at WT; calibrated on Yemini 2013 (Worm Behavior Database) + Lee 1997

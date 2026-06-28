@@ -4,6 +4,10 @@
 #include <cassert>
 #include <cmath>
 
+#if defined(_OPENMP)
+#  include <omp.h>
+#endif
+
 namespace wormsim2 {
 
 // ---------------------------------------------------------------------------
@@ -83,6 +87,12 @@ void NeuralIntegrator::step(float dt, std::span<const float> i_ext) {
 
 void NeuralIntegrator::update_gates(float dt) {
     const std::size_t gs = state_.gates_stride;
+    // Each neuron's gate updates are independent → embarrassingly parallel.
+    // Reduction: none; each neuron writes to its own state_.gate[] slice.
+#if defined(_OPENMP)
+#  pragma omp parallel for schedule(static) default(none) \
+     shared(dt, gs)
+#endif
     for (std::size_t i = 0; i < cfg_.neurons.size(); ++i) {
         const float v = state_.v[i];
         for (const auto& rc : layout_[i].channels) {

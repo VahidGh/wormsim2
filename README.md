@@ -1,6 +1,6 @@
 # wormsim2
 
-[![Version](https://img.shields.io/badge/version-v0.10.2-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.11.0-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-C%2B%2B20-blue?style=flat-square)](src/cpp/)
 [![Backends](https://img.shields.io/badge/backends-CPU%20%7C%20CUDA%20%7C%20OpenCL-76b900?style=flat-square)](docs/research/00-motivation-objectives-related-work.md)
@@ -50,7 +50,66 @@ analysis layer), domain assumptions, and explicit non-goals are detailed in the
 
 ---
 
-## Latest validated results (v0.10.2)
+## Installation
+
+Choose the guide that matches your environment:
+
+| Environment | Guide | Notes |
+|---|---|---|
+| **Local CPU** (macOS / Linux) | [`docs/install/local_cpu.md`](docs/install/local_cpu.md) | NumPy + JAX[cpu] + OpenMP C++; no GPU required |
+| **Local GPU — CUDA / OpenCL** (Docker) | [`docs/install/local_gpu_docker.md`](docs/install/local_gpu_docker.md) | NVIDIA CUDA + PyOpenCL on Linux; Docker + `nvidia-container-toolkit` |
+| **HPC / SLURM** (CINECA G100) | [`docs/install/hpc_slurm.md`](docs/install/hpc_slurm.md) | Singularity + SLURM; targets Tesla V100S 32 GB |
+| **CI / GitHub Actions** | [`docs/install/github_actions.md`](docs/install/github_actions.md) | Ubuntu runner; `jax[cpu]` + `pyopencl` (Intel ICD fallback) |
+
+### Minimal local install (CPU, no container)
+
+```bash
+git clone https://github.com/VahidGh/wormsim2.git && cd wormsim2
+
+# C++ build (OpenMP enabled)
+cmake -B build -GNinja -DCMAKE_BUILD_TYPE=Release -DWORMSIM2_OPENMP=ON
+cmake --build build -j$(nproc)
+
+# Python deps
+pip install numpy scipy pandas matplotlib joblib plotly kaleido pillow "jax[cpu]" pyopencl
+
+# Hardware detection
+python3 -c "import sys; sys.path.insert(0,'src/python'); from hardware import detect_hardware; print(detect_hardware().summary())"
+```
+
+See [`docs/install/local_cpu.md`](docs/install/local_cpu.md) for full instructions and troubleshooting.
+
+---
+
+## Latest validated results (v0.11.0)
+
+**CV-11 — Hardware-accelerated parallelism + full-length (30s) real-data-initialized validation**
+
+v0.11.0 adds a hardware detection layer (`hardware.py`), parallel skeleton backends (`backends.py`),
+C++ OpenMP for the HH gate loop, and installation guides for all deployment scenarios.
+All prior CVs (CV-8.1.1, CV-10.2, CV-10.7, CV-10.8) are repeated as CV-11.2–11.4
+with **30-second full-length simulation**, **real-data initialization** from `theta_rec[0]`,
+and NumPy-batch backend (**62.7×** faster than serial NumPy on this dev machine).
+
+| Backend | fps (871 frames) | speedup |
+|---|---|---|
+| numpy_serial | ~21,000 | 1.0× |
+| jax_cpu (XLA) | ~520,000 | 24.8× |
+| **numpy_batch** | **~1,300,000** | **62.7×** |
+| jax_cuda (V100S est.) | — | ~200–500× |
+
+> HPC estimate (CINECA G100, Tesla V100S, 6912 CUDA cores):
+> Amdahl f_par=97% → theoretical 33×; practical JAX-CUDA vs serial: **~200–500×**.
+> Full installation guides: [`docs/install/`](docs/install/)
+
+<img src="docs/images/v1103_nca_preview.gif" width="900" alt="CV-11.3 — nca-1;nca-2 full-length (30s, real-data-initialized)"/>
+
+> 58-frame preview GIF (2s clip at 14fps). Full 30s interactive Plotly: run `plotly_fig_to_gif()` locally.
+> Left: real N2 skeleton × 72% amp + fainting (Zenodo 1031837). Right: wormsim2 mutant_skeleton.
+
+---
+
+## Archived validated results (v0.10.2)
 
 **CV-10.8 — egl-19(n2368): single-channel VGIC perturbation demonstrates muscle-actuator vs circuit failure contrast**
 

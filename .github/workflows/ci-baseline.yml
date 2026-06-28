@@ -89,6 +89,78 @@ jobs:
             clang-tidy-output.txt
             ci-metadata.txt
 
+  # ── Python backend benchmark (v0.11.0) ─────────────────────────────────────
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python deps (CPU stack + OpenCL)
+        run: |
+          sudo apt-get install -y --no-install-recommends \
+            ocl-icd-opencl-dev opencl-headers \
+            beignet-opencl-icd || true   # Intel CPU OpenCL ICD (optional, CI fallback)
+          pip install numpy scipy matplotlib joblib "jax[cpu]" pyopencl
+
+      - name: Hardware detection
+        run: |
+          python3 -c "
+          import sys; sys.path.insert(0, 'src/python')
+          from hardware import detect_hardware
+          hw = detect_hardware()
+          print(hw.summary())
+          print('hw_recommended:', hw.recommended_backend)
+          " | tee hardware-detect-output.txt
+
+      - name: Backend benchmark (1000 frames)
+        run: |
+          python3 - << 'PYEOF' | tee benchmark-output.txt
+          import sys, numpy as np
+          sys.path.insert(0, 'src/python')
+          from backends import benchmark_backends
+
+          np.random.seed(0)
+          # 1000 frames on large batch for reliable speedup measurement
+          theta = np.random.randn(1000, 48).astype('float32') * 0.3
+          results = benchmark_backends(
+              theta, ds=1/48, mid_idx=24,
+              backends=['numpy_serial', 'numpy_batch', 'numpy_mp', 'opencl', 'jax_cpu'],
+              n_repeat=3,
+          )
+          serial_fps = None
+          batch_fps  = None
+          for r in results:
+              if r.get('error'):
+                  print(f"{r['backend']:20s}  SKIP (not available): {r['error'][:60]}")
+                  continue
+              sp = f"  {r['fps']/serial_fps:.1f}x" if serial_fps and r['fps'] else ''
+              print(f"{r['backend']:20s}  {r['fps']:>10.0f} fps  {r['time_s']:.4f}s{sp}")
+              print(f"{r['backend']}_fps={r['fps']:.0f}")
+              if 'serial' in r['backend']:   serial_fps = r['fps']
+              if 'batch'  in r['backend']:   batch_fps  = r['fps']
+
+          # CI assertion: numpy_batch must be >= 20x faster than serial
+          if serial_fps and batch_fps:
+              speedup = batch_fps / serial_fps
+              print(f'numpy_batch_speedup={speedup:.1f}x')
+              assert speedup >= 20, f'numpy_batch speedup {speedup:.1f}x below floor 20x'
+              print('benchmark_speedup_check: PASS')
+          PYEOF
+
+      - name: Upload benchmark evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-evidence
+          path: |
+            hardware-detect-output.txt
+            benchmark-output.txt
+
   # ── Code coverage ────────────────────────────────────────────────────────────
   coverage:
     runs-on: ubuntu-latest

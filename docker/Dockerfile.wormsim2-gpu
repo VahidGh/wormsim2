@@ -1,0 +1,71 @@
+# wormsim2 GPU development / benchmark image (v0.11.0)
+#
+# Extends the dev image with CUDA 12.4 + JAX[cuda12] for GPU-accelerated
+# skeleton kinematics and OpenMP-enabled C++ neural integration.
+#
+# Build (requires NVIDIA Docker runtime on Linux host):
+#   docker build -f docker/Dockerfile.wormsim2-gpu -t wormsim2-gpu .
+#
+# Run benchmark:
+#   docker run --rm --gpus all -v "$(pwd)":/wormsim2 wormsim2-gpu \
+#     bash -c "cd /wormsim2 && python3 src/python/notebooks/run_cv11.py"
+#
+# Requirements: nvidia-container-toolkit installed on the host.
+#   Ubuntu: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+#
+# Tested target hardware: CINECA G100 (V100S 32 GB, CUDA 12.4).
+
+FROM nvidia/cuda:12.4.0-devel-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+ENV WORMSIM2_SRC=/wormsim2
+
+# ── Block 1: C++ build + OpenMP ──────────────────────────────────────────────
+# ADDED: v0.11.0 — includes libgomp for OpenMP gate-variable parallelism
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        ninja-build \
+        git \
+        pkg-config \
+        ca-certificates \
+        libgomp1 \
+        libomp-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Block 2: OpenCL headers (for future GPGPU path) ──────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        opencl-headers \
+        ocl-icd-opencl-dev \
+        ocl-icd-libopencl1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Block 3: Python stack + JAX[cuda12] ──────────────────────────────────────
+# ADDED: v0.11.0 — JAX with CUDA 12 support
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 python3-pip python3-venv python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --no-cache-dir \
+    "jax[cuda12]" \
+    numpy scipy pandas matplotlib joblib \
+    plotly kaleido pillow \
+    pyopencl
+
+# ── Block 4: CUDA toolkit extras (nvcc already in base image) ────────────────
+# cuBLAS / cuDNN for JAX CUDA backend
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libcublas-dev-12-4 \
+        libcudnn9-cuda-12 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR ${WORMSIM2_SRC}
+
+# Default: run OpenMP C++ build + Python benchmark
+CMD ["bash", "-c", \
+     "cmake -B build -DCMAKE_BUILD_TYPE=Release -DWORMSIM2_OPENMP=ON \
+      -DWORMSIM2_BUILD_TESTS=ON -GNinja \
+      && cmake --build build -j$(nproc) \
+      && echo 'C++ build OK' \
+      && python3 -c 'import jax; print(\"JAX devices:\", jax.devices())'"]

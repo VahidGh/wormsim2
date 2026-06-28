@@ -3291,9 +3291,21 @@ class NeuromuscularTuner:
                 )
 
         n_tot = len(self.t_out)
-        n_fr  = n_tot if n_frames is None else min(int(n_frames), n_tot)
+        # When external ref data is provided, allow n_frames beyond the tuner's
+        # internal t_out length (full-length recording support, v0.11.0).
+        if n_frames is None:
+            n_fr = n_tot
+        elif ref_x is not None:
+            n_fr = min(int(n_frames), len(ref_x))   # cap at available ref data
+        else:
+            n_fr = min(int(n_frames), n_tot)
         _fps  = float(n_tot - 1) / self.t_out[-1] if fps is None else float(fps)
-        t_out = self.t_out[:n_fr]
+        # Build t_out for the full requested length
+        if n_fr <= n_tot:
+            t_out = self.t_out[:n_fr]
+        else:
+            dt = self.t_out[1] - self.t_out[0]
+            t_out = np.arange(n_fr, dtype=float) * dt
 
         # Left panel: custom reference data or eigenworm simulation
         if ref_x is not None:

@@ -77,6 +77,20 @@
 | `docs/images/v0102_egl19_rof.html` | v0.10.2 egl-19(n2368) interactive Plotly animation (`render_fig_n2_vs_mutant()`); 114 frames; left panel = real N2 skeleton × 0.63 amp_scale (no drift, no fainting); right = wormsim2 mutant_skeleton; EGL-19 subplot title patched; 1.7 MB | notebook CV-10.8 |
 | `docs/images/v0102_egl19_rof.gif` | v0.10.2 egl-19(n2368) animated GIF from `plotly_fig_to_gif()` (matplotlib render); 114 frames at 12 fps; 1230 KB; used in README v0.10.2 section | `plotly_fig_to_gif(fig108, ...)` — CV-10.8 |
 | `docs/images/v0102_egl19_rof_preview.png` | v0.10.2 static preview of egl-19(n2368) Plotly figure (kaleido frame 0); 140 KB | notebook CV-10.8 |
+| `src/python/hardware.py` | v0.11.0 hardware detection: `HardwareProfile` dataclass + `detect_hardware()` — probes CPU/RAM/CUDA/MPS/OpenCL/JAX/OpenMP | `hardware.detect_hardware()` |
+| `src/python/skeleton.py` | v0.11.0 canonical FK module: `theta_body` convention, `tangent_to_xy()`, `tangent_to_xy_batch()`, `xy_to_tangent()`, `load_skeleton_csv()` → `SkeletonData`, `visualize_skeleton_csv()` — single source of truth for FK math; documents why cumsum-on-angles is wrong | `from skeleton import visualize_skeleton_csv` |
+| `src/python/backends.py` | v0.11.0 parallel skeleton backends: `NumPySerialBackend`, `NumPyBatchBackend` (30-80× on ≥300 frames), `NumPyMultiprocessBackend` (joblib), `JAXBackend` (XLA JIT), `OpenCLBackend` (PyOpenCL GPU kernel: `tangent_to_xy_kernel`, one work-item per frame, NVIDIA/AMD/Intel/macOS); all FK delegated to `skeleton.tangent_to_xy_batch`; `select_backend()` priority: jax_cuda→opencl→jax_cpu→numpy_mp; `benchmark_backends()` | `backends.benchmark_backends()` |
+| `docker/Dockerfile.wormsim2-gpu` | v0.11.0 CUDA 12.4 GPU Docker image: `nvidia/cuda:12.4.0-devel-ubuntu22.04` + `jax[cuda12]` + `pyopencl` + OpenMP; for local GPU benchmarking | `docker build -f docker/Dockerfile.wormsim2-gpu -t wormsim2-gpu .` |
+| `singularity/wormsim2.def` | v0.11.0 Apptainer/Singularity definition for HPC (CINECA G100 V100S); bootstraps CUDA 12.4 base + Python/C++ stack + `pyopencl`; `OMP_NUM_THREADS`, `JAX_PLATFORMS=cuda,cpu` | `apptainer build wormsim2.sif singularity/wormsim2.def` |
+| `scripts/slurm/wormsim2_benchmark.sbatch` | v0.11.0 SLURM job script for CINECA G100: 32 CPUs + 1 V100S GPU; builds C++ (OpenMP ON), runs hardware detect + backend benchmark (10,000 frames) probing opencl + jax_cuda dynamically + Amdahl estimate | `sbatch scripts/slurm/wormsim2_benchmark.sbatch` |
+| `docs/install/local_cpu.md` | v0.11.0 local CPU installation guide: Python venv, CMake + OpenMP, C++ tests, CV-11 notebook | install guide |
+| `docs/install/local_gpu_docker.md` | v0.11.0 GPU Docker guide: NVIDIA Container Toolkit, docker run --gpus, JAX CUDA verify; full OpenCL backend section (NVIDIA/AMD/Intel/macOS ICD, OpenCLBackend usage, AMD --device=/dev/dri) | install guide |
+| `docs/install/hpc_slurm.md` | v0.11.0 HPC/SLURM guide: G100 onboarding, Apptainer build (CI vs local), sbatch workflow, G100 specs, Amdahl law table | install guide |
+| `docs/install/github_actions.md` | v0.11.0 CI guide: workflow overview, Python benchmark job, self-hosted GPU runner, evidence artifacts, matrix strategy, release trigger | install guide |
+| `.github/workflows/slurm-deploy.yml` | v0.11.0 tag-triggered Apptainer build: eWaterCycle/setup-apptainer@v2, sudo apptainer build, GPG two-tier signing, release asset upload | CI |
+| `docs/images/v1102_n2_vs_n2sim_preview.gif` | v0.11.0 CV-11.2 N2 vs N2-sim (2s clip, 58 frames, 14fps; real-data-initialized from theta_rec[0]); 403 KB | notebook CV-11.2 |
+| `docs/images/v1103_nca_preview.gif` | v0.11.0 CV-11.3 N2 vs nca-1;nca-2 full-length (2s clip, 58 frames, 14fps; real-data-initialized); 192 KB; used in README | notebook CV-11.3 |
+| `docs/images/v1104_egl19_preview.gif` | v0.11.0 CV-11.4 N2 vs egl-19(n2368) full-length (2s clip, 58 frames, 14fps); 414 KB | notebook CV-11.4 |
 
 ---
 

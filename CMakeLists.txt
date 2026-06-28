@@ -25,12 +25,29 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Build options
 # ---------------------------------------------------------------------------
 option(WORMSIM2_BUILD_TESTS   "Build CTest test suite"                  ON)
+option(WORMSIM2_OPENMP        "Enable OpenMP parallelism in C++ kernels" ON)
 set(WORMSIM2_BACKEND "CPU" CACHE STRING "Compute backend: CPU | CUDA | OPENCL")
 
 if(WORMSIM2_BUILD_TESTS)
     enable_testing()
 endif()
 set_property(CACHE WORMSIM2_BACKEND PROPERTY STRINGS CPU CUDA OPENCL)
+
+# ---------------------------------------------------------------------------
+# OpenMP (v0.11.0) — shared-memory parallelism for HH gate-variable loop
+# ---------------------------------------------------------------------------
+if(WORMSIM2_OPENMP)
+    find_package(OpenMP COMPONENTS CXX QUIET)
+    if(OpenMP_CXX_FOUND)
+        message(STATUS "OpenMP ${OpenMP_CXX_VERSION} found — enabling parallel gate update")
+        set(WORMSIM2_HAS_OPENMP TRUE)
+    else()
+        message(WARNING "OpenMP requested but not found — building serial fallback")
+        set(WORMSIM2_HAS_OPENMP FALSE)
+    endif()
+else()
+    set(WORMSIM2_HAS_OPENMP FALSE)
+endif()
 
 # ---------------------------------------------------------------------------
 # Compiler warnings  (NFR-QUAL-01)
