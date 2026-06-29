@@ -97,6 +97,56 @@
 | `docs/images/v1105_n2_plate_600s.html` | v0.11.1 CV-11.5b interactive Plotly agar-plate view full 600 s (616 anim frames ×28 from 17 226 valid WCON frames, bl=0.664 mm, path=82.6 BL); FK panel = real `theta_body` per frame → `compute_skeletons` (round-trip, mean shape error 0.040 BL); head marker (yellow circle) at index 0 (WCON `head='L'`); 12.7 MB; superseded by v1200_n2_tuner_600s.html in v0.11.2 | docs/images/ |
 | `docs/images/v1200_n2_tuner_600s.html` | v0.11.2 CV-11.5b N2 WT Plotly HTML with head/tail flip correction + 4-mode PCA tuner output (638 anim frames ×27 from 17 226 valid frames; bl=0.664 mm, path=82.6 BL); left=real WCON (flip-corrected), right=NeuromuscularTuner eigenworm reconstruction; var_exp=0.782, tuner shape err=0.022 BL, FK sanity=0.008 BL; responsive layout (autosize=True); 13.6 MB | Regenerate via `cv115b_tuner_600s.py` when WCON data or tuner parameters change |
 | `data/raw/N2_schafer_2014.wcon.zip` | Zenodo 1031837 WCON zip (12 MB, gitignored) — 600 s N2 WT recording, 17 999 frames, 49-keypoint skeleton in µm plate-frame; source for v1105_n2_plate_600s.html | gitignored — download via Zenodo API |
+| `docs/images/v1200_nca1_plate_600s.html` | v0.12.0 nca-1(gk9) agar-plate Plotly HTML (real WCON data, Zenodo 1003571, OWMD 2011); 900 s; 25 274 valid frames → 632 anim frames ×40; left=real WCON (4 tracker-swap flips corrected by `optimal_head_tail_flips`), right=4-mode PCA tuner reconstruction; bl=1.036 mm, path=129.6 BL, var_exp=0.8516, tuner_err=0.035 BL; fainting episodes visible; 13.9 MB | Regenerate via `gen_mutant_tuner.py` when WCON data or tuner logic changes |
+| `docs/images/v1200_egl19_plate_600s.html` | v0.12.0 egl-19(n2368) agar-plate Plotly HTML (real WCON data, Zenodo 1030607, OWMD 2010); 900 s; 18 558 valid frames → 640 anim frames ×29; left=real WCON (1 tracker-swap flip corrected at t=137.3 s), right=4-mode PCA tuner reconstruction; bl=0.687 mm, path=109.6 BL, var_exp=0.7633, tuner_err=0.044 BL; lower var_exp vs N2 (0.78) reflects irregular posture from reduced Ca²⁺ channel; 12.9 MB | Regenerate via `gen_mutant_tuner.py` when WCON data or tuner logic changes |
+
+### `docs/gui/` — GitHub Pages single-page GUI
+
+| File | Description | Update triggers |
+|---|---|---|
+| `docs/gui/index.html` | v0.12.0 single-page GitHub Pages GUI — searchable OWMD strain dropdown (Zenodo community API); pre-computed strains (N2, nca-1, egl-19) via `<iframe>`; OWMD strains: Zenodo fetch + JSZip + Pyodide 4-mode PCA tuner + inline Plotly; Downloads strip (real WCON, Sim WCON, VTU, NML, HOC, CSV); Sim WCON added for all 3 strains | Strain catalog change; Pyodide tuner logic change; UI redesign; new download added |
+| `docs/gui/scenarios/n2_wt.json` | v0.12.0 N2 WT scenario metadata — Plotly HTML path, metrics (bl, path, var_exp=0.782, tuner_err=0.022 BL), Zenodo 1031837 download links, Sim WCON path; consumed by GUI `renderInfoBar()` | Metrics change; new download file added |
+| `docs/gui/scenarios/nca_knockout.json` | v0.12.0 nca-1(gk9) scenario metadata — Zenodo 1003571 real WCON; tuner metrics (var_exp=0.8516, 4 flips); Sim WCON path added | Metrics change; new download file added |
+| `docs/gui/scenarios/egl19_rof.json` | v0.12.0 egl-19(n2368) scenario metadata — Zenodo 1030607 real WCON; tuner metrics (var_exp=0.7633, 1 flip); Sim WCON path added | Metrics change; new download file added |
+| `docs/gui/downloads/n2_wt_tuner.wcon` | v0.12.0 N2 WT 4-mode PCA tuner reconstruction in WCON format (525 KB); 638 animation frames ×27; plate-frame µm, head=index 0, 49 keypoints | Regenerate via `cv115b_tuner_600s.py` when tuner parameters change |
+| `docs/gui/downloads/nca1_tuner.wcon` | v0.12.0 nca-1(gk9) 4-mode PCA tuner reconstruction in WCON format (488 KB); 632 animation frames ×40; plate-frame µm, head=index 0 | Regenerate via `gen_mutant_tuner.py` when tuner parameters change |
+| `docs/gui/downloads/egl19_tuner.wcon` | v0.12.0 egl-19(n2368) 4-mode PCA tuner reconstruction in WCON format (497 KB); 640 animation frames ×29; plate-frame µm, head=index 0 | Regenerate via `gen_mutant_tuner.py` when tuner parameters change |
+| `docs/gui/downloads/n2_wt_600s_vtu.zip` | v0.12.0 N2 WT 600 s VTU ZIP (397 KB): `n2_wt_600s.pvd` + `frames/frame_0000–0219.vtu`; VTK_LINE cells; PointData: `worm_id` (0=real/1=sim), `keypoint_index` (0=head…48=tail); ParaView/PyVista compatible | New simulation run; skeleton keypoint count change |
+| `docs/gui/downloads/egl19_rof_vtu.zip` | v0.12.0 egl-19(n2368) VTU ZIP (143 KB): 80 frames; real WCON skeleton (tuner right panel) | Updated when real WCON re-processed |
+| `docs/gui/downloads/nca_knockout_vtu.zip` | v0.12.0 nca-1(gk9) VTU ZIP (143 KB): 80 frames; real WCON skeleton (tuner right panel) | Updated when real WCON re-processed |
+
+### `src/python/` — Pipeline modules
+
+| File | Description | Update triggers |
+|---|---|---|
+| `src/python/pipeline.py` | v0.12.1 — adds `wcon_to_skeleton_csv()`, `write_strain_dir()`, `run_from_wcon()`, `_get_version()`; CLI adds `--wcon-file`, `--strain-id`, `--strain-name`, `--strain-type` for running the tuner on any WCON and writing results to `docs/gui/strains/<id>/`. v0.12.0: `WormSimPipeline` + `SCENARIOS` registry | New scenario; new CLI arg; new helper |
+| `src/python/vtu_export.py` | v0.12.0 XML-based VTK/ParaView/PyVista exporter (no VTK lib); `export_trajectory(x_real, y_real, x_sim, y_sim, t_s, name, out_dir)` → ZIP with `.pvd` + `frames/frame_NNNN.vtu` (VTK_LINE, PointData: worm_id, keypoint_index) + README.txt | Skeleton schema change; new PointData field needed |
+
+### `docs/gui/strains/`
+
+| File | Description | Update triggers |
+|---|---|---|
+| `docs/gui/strains/index.json` | v0.12.1 manifest of all locally-tuned strains; read by GUI `discoverStrains()`; updated by `write_strain_dir()` on each new pipeline run | New tuned strain added |
+| `docs/gui/strains/n2_wt/meta.json` | v0.12.1 N2 WT strain metadata (metrics, outputs, downloads); read by GUI to populate info bar and animation iframe | Metrics change; new output file |
+| `docs/gui/strains/n2_wt/tuner.wcon` | v0.12.1 N2 WT tuner reconstruction in WCON format (plate-frame µm, 638 frames) | Re-run tuner |
+| `docs/gui/strains/nca1_gk9/meta.json` | v0.12.1 nca-1(gk9) metadata; var_exp=0.8516, 4 flip corrections | Metrics change |
+| `docs/gui/strains/nca1_gk9/tuner.wcon` | v0.12.1 nca-1(gk9) tuner WCON (632 frames) | Re-run tuner |
+| `docs/gui/strains/egl19_n2368/meta.json` | v0.12.1 egl-19(n2368) metadata; var_exp=0.7633, 1 flip correction | Metrics change |
+| `docs/gui/strains/egl19_n2368/tuner.wcon` | v0.12.1 egl-19(n2368) tuner WCON (640 frames) | Re-run tuner |
+| `docs/gui/zenodo_catalog.json` | v0.12.1 pre-built 30-entry OWMD strain catalog; 3 with confirmed Zenodo IDs; 27 with phenotype/tag metadata for live search | Add new catalog strain |
+
+### `docs/`
+
+| File | Description | Update triggers |
+|---|---|---|
+| `docs/USAGE_GUIDE.md` | v0.12.1 comprehensive installation + CLI + GUI + GH Actions usage guide | New feature; CLI arg change |
+
+### `.github/workflows/`
+
+| File | Description | Update triggers |
+|---|---|---|
+| `.github/workflows/gh-pages.yml` | v0.12.1 GH Pages deployment — now also copies `strains/`, `zenodo_catalog.json`, `USAGE_GUIDE.md` to `_site/`; v0.12.0: initial GH Pages deployment | New file to deploy; deployment path change |
+| `.github/workflows/tuner.yml` | v0.12.1 `workflow_dispatch` tuner — inputs: zenodo_id, strain_id, strain_name, strain_type; fetches WCON from Zenodo, runs pipeline, commits `docs/gui/strains/<id>/`, triggers gh-pages redeploy | New inputs; pipeline API change |
 
 ---
 

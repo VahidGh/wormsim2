@@ -1,0 +1,55 @@
+{
+  "id": "nca_knockout",
+  "name": "nca-1(gk9) — 900 s Agar Plate",
+  "strain": "nca-1(gk9)",
+  "type": "mutant",
+  "description": "Real nca-1(gk9) [unc-77] C. elegans recording, 900 s on agar (Zenodo 1003571, Open Worm Movement Database 2011). NCA is the NALCN-family leak channel; loss-of-function disrupts premotor circuit depolarisation, causing fainting episodes, reduced frequency and lower amplitude. Left: raw WCON skeleton (head=index 0). Right: NeuromuscularTuner 4-mode PCA eigenworm reconstruction (mu(s) + Σ aₙ(t)·eₙ(s), n=1..4), the same generative model that feeds fem_body_trace.",
+  "wcon_source": {
+    "label": "Zenodo 1003571 — Open Worm Movement Database 2011",
+    "url": "https://zenodo.org/records/1003571"
+  },
+  "status": "precomputed",
+  "metrics": {
+    "bl_mm": 1.036,
+    "path_bl": 129.6,
+    "tuner_var_explained": 0.8516,
+    "tuner_shape_error_bl": 0.03463,
+    "n_frames_raw": 25274,
+    "n_frames_anim": 632,
+    "n_flip_corrections": 4,
+    "duration_s": 899.0
+  },
+  "perturbation": null,
+  "outputs": {
+    "plotly_html": {
+      "gui_path": "images/v1200_nca1_plate_600s.html",
+      "raw_url": "https://raw.githubusercontent.com/VahidGh/wormsim2/main/docs/images/v1200_nca1_plate_600s.html",
+      "size_kb": 13884
+    }
+  },
+  "downloads": [
+    {
+      "name": "Real WCON recording (external)",
+      "description": "nca-1(gk9) 900 s locomotion — 49 keypoints, plate-frame µm, 25 fps (Zenodo 1003571)",
+      "size_kb": null,
+      "gui_path": null,
+      "raw_url": null,
+      "external_url": "https://zenodo.org/records/1003571"
+    },
+    {
+      "name": "Sim WCON — nca-1 tuner reconstruction",
+      "description": "4-mode PCA NeuromuscularTuner reconstruction in WCON format. Plate-frame µm, head=index 0, 632 animation frames.",
+      "size_kb": 488,
+      "gui_path": "downloads/nca1_tuner.wcon",
+      "raw_url": "https://raw.githubusercontent.com/VahidGh/wormsim2/main/docs/gui/downloads/nca1_tuner.wcon"
+    },
+    {
+      "name": "VTK/ParaView — nca-1 trajectory (.zip)",
+      "description": "80-frame VTU time-series. worm_id=0 real, worm_id=1 4-mode tuner reconstruction.",
+      "size_kb": 143,
+      "gui_path": "downloads/nca_knockout_vtu.zip",
+      "raw_url": "https://raw.githubusercontent.com/VahidGh/wormsim2/main/docs/gui/downloads/nca_knockout_vtu.zip"
+    }
+  ],
+  "generated": "2026-06-29T00:00:00Z"
+}

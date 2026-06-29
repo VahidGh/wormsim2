@@ -1,0 +1,109 @@
+name: "Tuner: add strain from Zenodo"
+
+on:
+  workflow_dispatch:
+    inputs:
+      zenodo_id:
+        description: "Zenodo record ID (e.g. 1031837)"
+        required: true
+        type: string
+      strain_id:
+        description: "Unique slug for the strain directory (e.g. n2_wt)"
+        required: true
+        type: string
+      strain_name:
+        description: "Display name for the GUI (e.g. N2 (wild type))"
+        required: false
+        type: string
+        default: ""
+      strain_type:
+        description: "Strain type badge"
+        required: false
+        type: choice
+        options: ["mutant", "wild_type"]
+        default: "mutant"
+
+jobs:
+  tune:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python deps
+        run: pip install numpy scipy pandas matplotlib plotly kaleido pillow joblib "jax[cpu]"
+
+      - name: Fetch WCON from Zenodo
+        id: fetch_wcon
+        run: |
+          set -euo pipefail
+          ZENODO_ID="${{ inputs.zenodo_id }}"
+          STRAIN_ID="${{ inputs.strain_id }}"
+          mkdir -p /tmp/wcon_downloads
+
+          # Resolve files list from Zenodo REST API
+          echo "[tuner] Fetching Zenodo record ${ZENODO_ID} metadata …"
+          META=$(curl -fsSL "https://zenodo.org/api/records/${ZENODO_ID}")
+          echo "$META" | python3 -c "
+          import sys, json, urllib.request, pathlib, re
+          meta = json.load(sys.stdin)
+          files = meta.get('files', []) or []
+          # Prefer .wcon, fallback to .wcon.zip
+          wcon = next((f for f in files if f['key'].endswith('.wcon') and not f['key'].endswith('.zip')), None)
+          if wcon is None:
+              wcon = next((f for f in files if '.wcon' in f['key']), None)
+          if wcon is None:
+              print('ERROR: no WCON file found in Zenodo record', file=sys.stderr)
+              sys.exit(1)
+          url  = wcon['links']['self']
+          dest = pathlib.Path('/tmp/wcon_downloads') / wcon['key']
+          print(f'[tuner] Downloading {url} …', file=sys.stderr)
+          urllib.request.urlretrieve(url, dest)
+          print(str(dest))   # captured by the shell
+          " > /tmp/wcon_path.txt
+          echo "wcon_path=$(cat /tmp/wcon_path.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Unzip WCON if needed
+        id: unzip
+        run: |
+          WCON="${{ steps.fetch_wcon.outputs.wcon_path }}"
+          if [[ "$WCON" == *.zip ]]; then
+            unzip -o "$WCON" -d /tmp/wcon_downloads/
+            WCON=$(find /tmp/wcon_downloads -name '*.wcon' ! -name '*.zip' | head -1)
+          fi
+          echo "wcon_path=$WCON" >> "$GITHUB_OUTPUT"
+
+      - name: Run tuner pipeline
+        run: |
+          STRAIN_NAME="${{ inputs.strain_name }}"
+          if [ -z "$STRAIN_NAME" ]; then
+            STRAIN_NAME="${{ inputs.strain_id }}"
+          fi
+          python3 -m src.python.pipeline \
+            --wcon-file "${{ steps.unzip.outputs.wcon_path }}" \
+            --strain-id "${{ inputs.strain_id }}" \
+            --strain-name "$STRAIN_NAME" \
+            --strain-type "${{ inputs.strain_type }}"
+
+      - name: Commit results
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/gui/strains/
+          git diff --cached --quiet && echo "nothing to commit" || \
+            git commit -m "tuner: add ${{ inputs.strain_id }} (Zenodo ${{ inputs.zenodo_id }})"
+          git push
+
+      - name: Trigger GH Pages redeploy
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: gh-pages.yml
+          token: ${{ secrets.GITHUB_TOKEN }}

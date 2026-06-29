@@ -1,12 +1,21 @@
 name: SLURM Deploy (Apptainer Build + Release)
 
 # Tag-triggered workflow: builds the Apptainer/Singularity image,
-# optionally signs it, and uploads the .sif as a GitHub Release asset
-# ready for scp to CINECA G100.
+# optionally signs it, and pushes the .sif to GHCR (GitHub Container
+# Registry via ORAS) — GitHub Release assets are capped at 2 GB and the
+# cuda+JAX image exceeds that.  Lightweight metadata files (.sha256,
+# -info, -smoke, .asc) are still uploaded to the release.
+#
+# Pull the image after a tagged release:
+#   apptainer pull wormsim2.sif oras://ghcr.io/VahidGh/wormsim2:<tag>-sif
 #
 # References:
 #   docs/install/hpc_slurm.md — operational guide
 #   docs/install/github_actions.md — CI guide
+#
+# Note: eWaterCycle/setup-apptainer@v2 declares "using: node20" internally.
+# GitHub runs it under Node 24 via a compat shim (harmless warning).
+# Update to @v3 once the upstream action adds node24 support.
 
 on:
   push:
@@ -15,7 +24,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release tag (e.g. v0.11.0) — only for artifact naming'
+        description: 'Release tag (e.g. v0.12.0) — only for artifact naming'
         required: false
         default: 'manual-dispatch'
 
@@ -23,7 +32,8 @@ jobs:
   build-and-sign-sif:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write   # create/update releases
+      packages: write   # push to GHCR
 
     steps:
       - name: Checkout
@@ -40,6 +50,8 @@ jobs:
       - name: Build wormsim2.sif
         # singularity/wormsim2.def pulls nvidia/cuda:12.4 base (~3 GB)
         # and installs JAX[cuda12] + C++ build tools + OpenMP.
+        # Resulting .sif is typically 3-5 GB — above the 2 GB GitHub
+        # release-asset cap, so it is pushed to GHCR instead (see below).
         run: |
           sudo apptainer build wormsim2.sif singularity/wormsim2.def
 
@@ -78,18 +90,52 @@ jobs:
           fi
           cat wormsim2.sif.sha256
 
-      - name: Upload release assets
+      - name: Push .sif to GHCR via ORAS (avoids 2 GB release-asset cap)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GITHUB_TOKEN" | apptainer remote login \
+            --username "${{ github.actor }}" --password-stdin \
+            oras://ghcr.io
+          SIF_TAG="${{ github.ref_name }}-sif"
+          apptainer push wormsim2.sif \
+            "oras://ghcr.io/${{ github.repository_owner }}/wormsim2:${SIF_TAG}"
+          echo "sif_tag=${SIF_TAG}" >> $GITHUB_ENV
+          echo "Pushed: ghcr.io/${{ github.repository_owner }}/wormsim2:${SIF_TAG}"
+
+      - name: Upload release assets (metadata only — .sif on GHCR)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          append_body: true
+          body: |
+
+            ---
+            ### Singularity/Apptainer image
+
+            The `.sif` image (~3–5 GB, CUDA 12.4 + JAX + C++ toolchain) exceeds
+            GitHub's 2 GB release-asset limit and is hosted on GHCR:
+
+            ```bash
+            apptainer pull wormsim2.sif \
+              oras://ghcr.io/${{ github.repository_owner }}/wormsim2:${{ env.sif_tag }}
+            ```
+
+            Verify integrity against `wormsim2.sif.sha256` attached below.
           files: |
-            wormsim2.sif
             wormsim2.sif.sha256
             wormsim2-sif-info.txt
             wormsim2-sif-smoke.txt
-            ${{ env.gpg_signed == 'true' && 'wormsim2.sif.asc' || '' }}
+          fail_on_unmatched_files: false
 
-      - name: Upload artifacts (non-tag run)
+      - name: Upload .sif.asc to release (GPG-signed builds only)
+        if: startsWith(github.ref, 'refs/tags/') && env.gpg_signed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: wormsim2.sif.asc
+
+      - name: Upload artifacts (non-tag / workflow_dispatch run)
         if: "!startsWith(github.ref, 'refs/tags/')"
         uses: actions/upload-artifact@v4
         with:

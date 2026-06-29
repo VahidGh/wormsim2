@@ -54,3 +54,13 @@ slurm-*.err
 .dev/
 .devcontainer/
 
+# ── Claude Code session files ─────────────────────────────────────────────────
+.claude/
+
+# ── GUI dev artifacts (not deployed) ─────────────────────────────────────────
+docs/gui/images/
+docs/gui/zenodo_catalog.json
+
+# ── Local research data (large, never push) ───────────────────────────────────
+docs/research/
+

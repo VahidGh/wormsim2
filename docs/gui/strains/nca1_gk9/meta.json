@@ -1,0 +1,36 @@
+{
+  "id": "nca1_gk9",
+  "strain": "nca-1(gk9)",
+  "genotype": "nca-1(gk9) IV",
+  "gene": "nca-1",
+  "allele": "gk9",
+  "zenodo_id": "1003571",
+  "zenodo_url": "https://zenodo.org/records/1003571",
+  "description": "NALCN-family leak channel loss-of-function. Disrupts premotor circuit depolarisation, causing fainting episodes, reduced undulation frequency and amplitude. 900 s agar recording (OWMD 2011). 4 tracker-swap flips corrected.",
+  "phenotype": "Fainting episodes, reduced undulation frequency and amplitude",
+  "type": "mutant",
+  "tags": ["mutant", "ion_channel", "nca", "fainting"],
+  "metrics": {
+    "bl_mm": 1.036,
+    "path_bl": 129.6,
+    "tuner_var_explained": 0.8516,
+    "tuner_shape_error_bl": 0.03463,
+    "n_flip_corrections": 4,
+    "n_frames_raw": 25274,
+    "n_frames_anim": 632,
+    "duration_s": 899.0,
+    "n_modes": 4
+  },
+  "outputs": {
+    "animation_html": "images/v1200_nca1_plate_600s.html",
+    "tuner_wcon": "strains/nca1_gk9/tuner.wcon",
+    "scenario_json": "scenarios/nca_knockout.json"
+  },
+  "downloads": [
+    { "label": "🔬 WCON (Zenodo)", "url": "https://zenodo.org/records/1003571", "ext": true },
+    { "label": "💾 Sim WCON",      "url": "strains/nca1_gk9/tuner.wcon" },
+    { "label": "🗜 VTU",           "url": "downloads/nca_knockout_vtu.zip" }
+  ],
+  "wormsim2_version": "v0.12.1",
+  "generated": "2026-06-29T00:00:00Z"
+}

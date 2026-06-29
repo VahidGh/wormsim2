@@ -1,0 +1,36 @@
+{
+  "id": "egl19_n2368",
+  "strain": "egl-19(n2368)",
+  "genotype": "egl-19(n2368) IV",
+  "gene": "egl-19",
+  "allele": "n2368",
+  "zenodo_id": "1030607",
+  "zenodo_url": "https://zenodo.org/records/1030607",
+  "description": "Voltage-gated Ca²⁺ channel Caᵥ1.2 partial loss-of-function. Reduces muscle Ca²⁺ influx, causing lower body-wave amplitude and reduced undulation frequency vs N2. 900 s agar recording (OWMD 2010). 1 tracker-swap flip corrected at t≈137 s.",
+  "phenotype": "Reduced amplitude, lower undulation frequency (Caᵥ1.2 partial LOF)",
+  "type": "mutant",
+  "tags": ["mutant", "ion_channel", "calcium", "egl"],
+  "metrics": {
+    "bl_mm": 0.687,
+    "path_bl": 109.6,
+    "tuner_var_explained": 0.7633,
+    "tuner_shape_error_bl": 0.04427,
+    "n_flip_corrections": 1,
+    "n_frames_raw": 18558,
+    "n_frames_anim": 640,
+    "duration_s": 897.9,
+    "n_modes": 4
+  },
+  "outputs": {
+    "animation_html": "images/v1200_egl19_plate_600s.html",
+    "tuner_wcon": "strains/egl19_n2368/tuner.wcon",
+    "scenario_json": "scenarios/egl19_rof.json"
+  },
+  "downloads": [
+    { "label": "🔬 WCON (Zenodo)", "url": "https://zenodo.org/records/1030607", "ext": true },
+    { "label": "💾 Sim WCON",      "url": "strains/egl19_n2368/tuner.wcon" },
+    { "label": "🗜 VTU",           "url": "downloads/egl19_rof_vtu.zip" }
+  ],
+  "wormsim2_version": "v0.12.1",
+  "generated": "2026-06-29T00:00:00Z"
+}

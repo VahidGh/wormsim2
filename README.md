@@ -1,11 +1,12 @@
 # wormsim2
 
-[![Version](https://img.shields.io/badge/version-v0.11.2-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.12.1-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-C%2B%2B20-blue?style=flat-square)](src/cpp/)
 [![Backends](https://img.shields.io/badge/backends-CPU%20%7C%20CUDA%20%7C%20OpenCL-76b900?style=flat-square)](docs/research/00-motivation-objectives-related-work.md)
 [![Status](https://img.shields.io/badge/status-CI%20live-brightgreen?style=flat-square)](docs/ISSUES.md)
 [![CI](https://github.com/VahidGh/wormsim2/actions/workflows/ci-baseline.yml/badge.svg)](https://github.com/VahidGh/wormsim2/actions/workflows/ci-baseline.yml)
+[![GUI](https://img.shields.io/badge/GUI-live-brightgreen?style=flat-square)](https://vahidgh.github.io/wormsim2/)
 
 > **A real-time, biophysically-faithful *C. elegans* locomotion simulator.**
 
@@ -21,6 +22,8 @@ real-time but replaces the ion-channel nervous system with a black-box trained n
 Neither closes the proprioceptive loop, and both validate weakly. wormsim2 targets all
 of these at once, and ships a **web-friendly browser 3D viewer** so results are
 explorable without a native install.
+
+> 🌐 **Live GUI:** [vahidgh.github.io/wormsim2](https://vahidgh.github.io/wormsim2/) — interactive animations + OWMD strain browser
 
 > 📄 **Scientific foundation:** [docs/research/00-motivation-objectives-related-work.md](docs/research/00-motivation-objectives-related-work.md)
 
@@ -54,30 +57,63 @@ analysis layer), domain assumptions, and explicit non-goals are detailed in the
 
 Choose the guide that matches your environment:
 
-| Environment | Guide | Notes |
-|---|---|---|
-| **Local CPU** (macOS / Linux) | [`docs/install/local_cpu.md`](docs/install/local_cpu.md) | NumPy + JAX[cpu] + OpenMP C++; no GPU required |
-| **Local GPU — CUDA / OpenCL** (Docker) | [`docs/install/local_gpu_docker.md`](docs/install/local_gpu_docker.md) | NVIDIA CUDA + PyOpenCL on Linux; Docker + `nvidia-container-toolkit` |
-| **HPC / SLURM** (CINECA G100) | [`docs/install/hpc_slurm.md`](docs/install/hpc_slurm.md) | Singularity + SLURM; targets Tesla V100S 32 GB |
-| **CI / GitHub Actions** | [`docs/install/github_actions.md`](docs/install/github_actions.md) | Ubuntu runner; `jax[cpu]` + `pyopencl` (Intel ICD fallback) |
+| Environment                                   | Guide                                                                 | Notes                                                                 |
+| --------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| **Local CPU** (macOS / Linux)           | [`docs/install/local_cpu.md`](docs/install/local_cpu.md)               | NumPy + JAX[cpu] + OpenMP C++; no GPU required                        |
+| **Local GPU — CUDA / OpenCL** (Docker) | [`docs/install/local_gpu_docker.md`](docs/install/local_gpu_docker.md) | NVIDIA CUDA + PyOpenCL on Linux; Docker +`nvidia-container-toolkit` |
+| **HPC / SLURM** (CINECA G100)           | [`docs/install/hpc_slurm.md`](docs/install/hpc_slurm.md)               | Singularity + SLURM; targets Tesla V100S 32 GB                        |
+| **CI / GitHub Actions**                 | [`docs/install/github_actions.md`](docs/install/github_actions.md)     | Ubuntu runner;`jax[cpu]` + `pyopencl` (Intel ICD fallback)        |
 
-### Minimal local install (CPU, no container)
+---
+
+## Usage
+
+### N2 wild-type example: WCON → tuner animation → GUI
 
 ```bash
-git clone https://github.com/VahidGh/wormsim2.git && cd wormsim2
+# 1. Download original WCON (N2 WT, Zenodo 1031837) or use your own:
+#    Place it at data/raw/wcon_raw/N2_sample.wcon
 
-# C++ build (OpenMP enabled)
-cmake -B build -GNinja -DCMAKE_BUILD_TYPE=Release -DWORMSIM2_OPENMP=ON
-cmake --build build -j$(nproc)
+# 2. Run the tuner pipeline to generate a Plotly animation
+python3 -m src.python.pipeline --scenario n2_wt
 
-# Python deps
-pip install numpy scipy pandas matplotlib joblib plotly kaleido pillow "jax[cpu]" pyopencl
+# 3. Open the resulting animation locally
+open docs/images/v1200_n2_tuner_600s.html
 
-# Hardware detection
-python3 -c "import sys; sys.path.insert(0,'src/python'); from hardware import detect_hardware; print(detect_hardware().summary())"
+# 4. Or view all strains in the interactive GUI (no install needed):
+#    https://vahidgh.github.io/wormsim2/
 ```
 
-See [`docs/install/local_cpu.md`](docs/install/local_cpu.md) for full instructions and troubleshooting.
+The pipeline outputs:
+
+- `docs/images/v1200_n2_tuner_600s.html` — side-by-side real vs 4-mode PCA reconstruction (638 frames)
+- `docs/gui/downloads/n2_wt_tuner.wcon` — tuner reconstruction in WCON format (plate-frame µm)
+- `docs/gui/scenarios/n2_wt.json` — metrics (var_exp, shape_err, bl_mm, flip corrections)
+
+The GUI at [vahidgh.github.io/wormsim2](https://vahidgh.github.io/wormsim2/) renders these directly in your browser with no local install required.
+
+> 📖 **Full usage guide** (local server, your own WCON, GH Actions tuner): [`docs/USAGE_GUIDE.md`](docs/USAGE_GUIDE.md)
+
+---
+
+## Latest validated results (v0.12.1)
+
+**v0.12.0 — Reusable pipeline + GH Pages GUI + VTK/ParaView export**
+
+v0.12.0 adds a complete public-facing interactive GUI deployed via GitHub Pages, a reusable
+end-to-end scenario pipeline, score-optimal head/tail flip correction, and ParaView/PyVista-compatible VTU trajectory exports.
+
+**Live:** [vahidgh.github.io/wormsim2](https://vahidgh.github.io/wormsim2/)
+
+| Feature                            | Details                                                                                                                                                                                         |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/python/pipeline.py`         | `WormSimPipeline` + `SCENARIOS` registry → scenario JSON (metrics, tuner_params, hardware, downloads)                                                                                      |
+| `src/python/vtu_export.py`       | XML VTU+PVD writer (no VTK library); LINE cells;`worm_id`/`keypoint_index` PointData                                                                                                        |
+| `docs/gui/index.html`            | Single-page GUI: searchable OWMD strain dropdown (Zenodo API); pre-computed N2/nca-1/egl-19 animations; Downloads strip (real WCON, sim WCON, VTU, NML, HOC, CSV)                               |
+| `src/python/tuner.py`            | `optimal_head_tail_flips()` — brute-force 2ⁿ search maximising weighted per-segment var_exp; handles N2 (1 flip), nca-1 (4 flips), egl-19 (1 flip) with improved var_exp across all strains |
+| Sim WCON downloads                 | Tuner reconstruction exported as WCON (plate-frame µm) for all 3 strains                                                                                                                       |
+| VTU ZIPs                           | N2 WT 600 s (397 KB, 220 fr); nca KO (143 KB, 80 fr); egl-19 LOF (143 KB, 80 fr)                                                                                                                |
+| `.github/workflows/gh-pages.yml` | Auto-deploy on push to`main` via `peaceiris/actions-gh-pages@v4`                                                                                                                            |
 
 ---
 
@@ -94,12 +130,12 @@ All prior CVs (CV-8.1.1, CV-10.2, CV-10.7, CV-10.8) are repeated as CV-11.2–11
 with **30-second full-length simulation**, **real-data initialization** from `theta_rec[0]`,
 and NumPy-batch backend (**62.7×** faster than serial NumPy on this dev machine).
 
-| Backend | fps (871 frames) | speedup |
-|---|---|---|
-| numpy_serial | ~21,000 | 1.0× |
-| jax_cpu (XLA) | ~520,000 | 24.8× |
+| Backend               | fps (871 frames)     | speedup          |
+| --------------------- | -------------------- | ---------------- |
+| numpy_serial          | ~21,000              | 1.0×            |
+| jax_cpu (XLA)         | ~520,000             | 24.8×           |
 | **numpy_batch** | **~1,300,000** | **62.7×** |
-| jax_cuda (V100S est.) | — | ~200–500× |
+| jax_cuda (V100S est.) | —                   | ~200–500×      |
 
 > HPC estimate (CINECA G100, Tesla V100S, 6912 CUDA cores):
 > Amdahl f_par=97% → theoretical 33×; practical JAX-CUDA vs serial: **~200–500×**.
@@ -181,15 +217,15 @@ intermittent fainting (prob=1.5%/frame, 1.5 s episodes). Interactive Plotly comp
 
 <img src="docs/images/v0100_mutant_real_vs_sim.gif" width="900" alt="CV-10.5 — nca-1;nca-2 phenotype reference (real N2 body × Yemini 2013 scaling) vs wormsim2 simulation"/>
 
-> **Left:** Phenotype reference — real N2 skeleton (Zenodo 1031837) with Yemini 2013 mutation scaling applied (72% amplitude, 43% speed, fainting).  
+> **Left:** Phenotype reference — real N2 skeleton (Zenodo 1031837) with Yemini 2013 mutation scaling applied (72% amplitude, 43% speed, fainting).
 > **Right:** wormsim2 `mutant_skeleton()` simulation at 0.32 Hz, same fainting mask. Both panels straighten identically during fainting.
 
-| Metric | N2 reference | nca-1;nca-2 | Source |
-|---|---|---|---|
-| Undulation frequency | 0.50 Hz | 0.32 Hz (64%) | Yemini 2013 + Jospin 2007 |
-| Bending amplitude | 1.0× | 0.72× | Yemini 2013 |
-| Forward speed | 1.0× | 0.43× | Yemini 2013 + Gao 2015 |
-| Fainting (body freeze) | — | ~1.5%/frame, 1.5 s | Jospin 2007 |
+| Metric                 | N2 reference | nca-1;nca-2        | Source                    |
+| ---------------------- | ------------ | ------------------ | ------------------------- |
+| Undulation frequency   | 0.50 Hz      | 0.32 Hz (64%)      | Yemini 2013 + Jospin 2007 |
+| Bending amplitude      | 1.0×        | 0.72×             | Yemini 2013               |
+| Forward speed          | 1.0×        | 0.43×             | Yemini 2013 + Gao 2015    |
+| Fainting (body freeze) | —           | ~1.5%/frame, 1.5 s | Jospin 2007               |
 
 **CV-10.6 — N2 vs nca-1;nca-2: full-body 3D crawl with biologically-realistic mutant trajectory**
 
@@ -203,16 +239,16 @@ fainting episodes the head freezes (body straightens progressively). The slower 
 
 <img src="docs/images/v0100_n2_vs_mutant_3d.gif" width="900" alt="CV-10.6 — N2 vs nca-1;nca-2 3D crawl comparison — biologically-realistic mutant trajectory"/>
 
-> **Left:** N2 wild-type — smooth sinusoidal body follows real Nguyen 2018 head path (viridis trail = time 0→30 s).  
-> **Right:** nca-1;nca-2 — same foraging motivation; slower speed, smaller body curves, fainting pauses freeze the head.  
+> **Left:** N2 wild-type — smooth sinusoidal body follows real Nguyen 2018 head path (viridis trail = time 0→30 s).
+> **Right:** nca-1;nca-2 — same foraging motivation; slower speed, smaller body curves, fainting pauses freeze the head.
 > Mutant covers only **~15% of N2's explored XY area** in the same 30 s window.
 
-| Metric | N2 (30 s) | nca-1;nca-2 (30 s) |
-|---|---|---|
-| Head range (X × Y) | 157 × 266 µm | 62 × 103 µm |
-| Net displacement | 247 µm | 81 µm (33% of N2) |
-| Explored XY area | 100% | ~15% |
-| Fainting fraction | — | 32.9% of frames |
+| Metric              | N2 (30 s)      | nca-1;nca-2 (30 s) |
+| ------------------- | -------------- | ------------------ |
+| Head range (X × Y) | 157 × 266 µm | 62 × 103 µm      |
+| Net displacement    | 247 µm        | 81 µm (33% of N2) |
+| Explored XY area    | 100%           | ~15%               |
+| Fainting fraction   | —             | 32.9% of frames    |
 
 ---
 
@@ -239,12 +275,12 @@ wormsim2 `NeuromuscularTuner.crawl_3d_skeleton_trackfollow()` uses the real head
 
 <img src="docs/images/nguyen2018_fig4b_error.png" width="900" alt="Track-following body-position error vs Nguyen 2018 real skeleton"/>
 
-| Metric | Value | Notes |
-|---|---|---|
-| Head error (k = 0) | **0 µm** | Exact by construction (real positions used) |
-| Overall body RMSE | **278.7 µm = 46.1% BL** | Residual = lateral undulation not in track-following model |
-| Tail error (k = 24) | **443.7 µm** | Tail is furthest from head → largest deviation |
-| Body length L | 604 µm | Nguyen 2018 N2 median |
+| Metric              | Value                          | Notes                                                      |
+| ------------------- | ------------------------------ | ---------------------------------------------------------- |
+| Head error (k = 0)  | **0 µm**                | Exact by construction (real positions used)                |
+| Overall body RMSE   | **278.7 µm = 46.1% BL** | Residual = lateral undulation not in track-following model |
+| Tail error (k = 24) | **443.7 µm**            | Tail is furthest from head → largest deviation            |
+| Body length L       | 604 µm                        | Nguyen 2018 N2 median                                      |
 
 > Residual error monotonically increases from head to tail (heatmap shows no temporal structure). The gap quantifies the undulation amplitude that the pure track-following model does not capture; the next step is to superimpose the measured eigenworm bending modes.
 
@@ -260,13 +296,13 @@ wormsim2 `NeuromuscularTuner.crawl_3d_skeleton_trackfollow()` uses the real head
 > **Right:** wormsim2 v0.8.2 `NeuromuscularTuner` — 4-mode eigenworm activation: θ(s,t) = μ(s) + Σ aₙ(t)·eₙ(s), n=0–3; R² = 0.944 (94.4% posture variance). Same grid and scale.
 > [**▶ Open interactive animation (scrubber + speed panel)**](docs/images/v082_n2_vs_cel_tuned.html)
 
-| | v0.8 FEM (uniform drive) | v0.8.2 NeuromuscularTuner |
-|---|---|---|
-| Activation | spatially uniform C-bend | 4-mode eigenworm, PCA of N2 θ(s,t) |
-| Posture variance captured | — | **94.4%** (modes 0–3: 76.8 + 8.5 + 6.5 + 2.5%) |
-| CEl₄₈ (mean) | 0.4278 BL² | **0.000133 BL²** |
-| RMS / muscle point | 434 µm | **8 µm** |
-| Improvement | — | **3212× CEl · 57× RMS** |
+|                           | v0.8 FEM (uniform drive) | v0.8.2 NeuromuscularTuner                             |
+| ------------------------- | ------------------------ | ----------------------------------------------------- |
+| Activation                | spatially uniform C-bend | 4-mode eigenworm, PCA of N2 θ(s,t)                   |
+| Posture variance captured | —                       | **94.4%** (modes 0–3: 76.8 + 8.5 + 6.5 + 2.5%) |
+| CEl₄₈ (mean)            | 0.4278 BL²              | **0.000133 BL²**                               |
+| RMS / muscle point        | 434 µm                  | **8 µm**                                       |
+| Improvement               | —                       | **3212× CEl · 57× RMS**                      |
 
 ---
 
@@ -413,24 +449,31 @@ wormsim2/
 
 Track progress in [docs/ISSUES.md](docs/ISSUES.md) and [CHANGELOG.md](CHANGELOG.md).
 
-| Component                                                                               | Status                           |
-| --------------------------------------------------------------------------------------- | -------------------------------- |
-| [Scientific charter](docs/research/00-motivation-objectives-related-work.md)               | Draft                            |
-| [Requirements analysis](docs/requirements/01-requirements-analysis.md)                     | Draft                            |
-| [Architecture design](docs/design/02-architecture-design.md)                               | Draft                            |
-| `src/cpp/io/` — dual-format network loader                                           | **Done** (2/2 tests pass)  |
-| CI pipeline (build/test/cppcheck/clang-tidy/coverage)                                   | **Done**                   |
-| C++20 quality checker (72 static checks, 12 categories)                                 | **Done**                   |
-| `src/cpp/neural/` — HH ODE integrator                                                | **Done** (2/2 tests pass)  |
-| `src/cpp/tools/neural_trace` — CSV data runner (7 scenarios, incl. `muscle_trace`) | **Done**                   |
-| `data/c302/c302_C2_Full.net.nml` — c302 C2 full connectome                           | **Done**                   |
-| `src/cpp/tools/connectome_trace` — full-connectome trace tool                        | **Done** (5/5 tests pass)  |
-| NMJ layer (`NeuralIntegrator` + `NeuralState` + `NetworkConfig`)                  | **Done** (3/3 tests pass)  |
-| `notebooks/project_tour.ipynb` — C++ output demos + Boyle-Cohen CV + v0.5            | **Done**                   |
-| FEM body (`FEMBody`) — corotated elastic, UMFPACK, overdamped implicit Euler         | **Done** (3/3 CV-8.x pass) |
-| Compute backends (OpenCL / CUDA)                                                        | Planned                          |
-| Python validation layer                                                                 | Planned                          |
-| Browser 3D viewer                                                                       | Planned                          |
+| Component                                                                                   | Status                                                    |
+| ------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| [Scientific charter](docs/research/00-motivation-objectives-related-work.md)                   | Draft                                                     |
+| [Requirements analysis](docs/requirements/01-requirements-analysis.md)                         | Draft                                                     |
+| [Architecture design](docs/design/02-architecture-design.md)                                   | Draft                                                     |
+| `src/cpp/io/` — dual-format network loader                                               | **Done** (2/2 tests pass)                           |
+| CI pipeline (build/test/cppcheck/clang-tidy/coverage)                                       | **Done**                                            |
+| C++20 quality checker (72 static checks, 12 categories)                                     | **Done**                                            |
+| `src/cpp/neural/` — HH ODE integrator                                                    | **Done** (2/2 tests pass)                           |
+| `src/cpp/tools/neural_trace` — CSV data runner (7 scenarios, incl. `muscle_trace`)     | **Done**                                            |
+| `data/c302/c302_C2_Full.net.nml` — c302 C2 full connectome                               | **Done**                                            |
+| `src/cpp/tools/connectome_trace` — full-connectome trace tool                            | **Done** (5/5 tests pass)                           |
+| NMJ layer (`NeuralIntegrator` + `NeuralState` + `NetworkConfig`)                      | **Done** (3/3 tests pass)                           |
+| `notebooks/project_tour.ipynb` — C++ output demos + Boyle-Cohen CV + v0.5                | **Done**                                            |
+| FEM body (`FEMBody`) — corotated elastic, UMFPACK, overdamped implicit Euler             | **Done** (3/3 CV-8.x pass)                          |
+| `src/python/pipeline.py` — end-to-end scenario pipeline (`WormSimPipeline`)            | **Done**                                            |
+| `src/python/tuner.py` — 4-mode PCA NeuromuscularTuner + `optimal_head_tail_flips`      | **Done** (all 3 strains validated)                  |
+| `src/python/vtu_export.py` — ParaView/PyVista-compatible VTU/PVD export                  | **Done**                                            |
+| `docs/gui/` — interactive GH Pages GUI (N2, nca-1, egl-19 + OWMD browser)                | **Done** ([live](https://vahidgh.github.io/wormsim2/)) |
+| Real-WCON mutant comparison (nca-1, egl-19 vs N2)                                           | **Done** (var_exp: nca-1 0.852, egl-19 0.763)       |
+| Compute backends (NumPy CPU / JAX / OpenCL / CUDA Dockerfile)                               | **Done**                                            |
+| Python validation layer (`pipeline.py`, `tuner.py`, `vtu_export.py`, `hardware.py`) | **Done**                                            |
+| Interactive browser GUI (GH Pages, Pyodide, Plotly iframes)                                 | **Done** ([live](https://vahidgh.github.io/wormsim2/)) |
+| v0.13 — CUDA GPU compute backend + 3D WebGL browser viewer                                 | Planned                                                   |
+| v0.13 — HH ion-channel parameter fitting                                                   | Planned                                                   |
 
 ---
 

@@ -1,0 +1,66 @@
+name: Deploy GUI to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble GH Pages output
+        run: |
+          mkdir -p _site/scenarios _site/downloads _site/images _site/strains
+
+          # GUI entry point
+          cp docs/gui/index.html _site/index.html
+
+          # Pre-computed scenario JSONs (used by GUI renderInfoBar)
+          cp docs/gui/scenarios/*.json _site/scenarios/
+
+          # Sim WCON downloads (tuner reconstruction, plate-frame µm)
+          cp docs/gui/downloads/*.wcon _site/downloads/ 2>/dev/null || true
+
+          # VTU download ZIPs (ParaView/PyVista trajectories)
+          cp docs/gui/downloads/*.zip _site/downloads/
+
+          # Per-strain result directories (local tuner outputs, auto-discovered by GUI)
+          if [ -d docs/gui/strains ]; then
+            cp -r docs/gui/strains/. _site/strains/
+          fi
+
+          # Zenodo OWMD catalog (pre-built strain list for search bar)
+          if [ -f docs/gui/zenodo_catalog.json ]; then
+            cp docs/gui/zenodo_catalog.json _site/zenodo_catalog.json
+          fi
+
+          # Images: GIFs and interactive HTML animations
+          cp docs/images/*.gif  _site/images/ 2>/dev/null || true
+          cp docs/images/*.html _site/images/ 2>/dev/null || true
+
+          # Usage guide (linked from GUI dropdown footer)
+          if [ -f docs/USAGE_GUIDE.md ]; then
+            cp docs/USAGE_GUIDE.md _site/USAGE_GUIDE.md
+          fi
+
+          # Pipeline outputs referenced via images/ URL (CSV, NeuroML, NEURON .hoc)
+          find docs/images -maxdepth 1 \( -name "*.csv" -o -name "*.nml" -o -name "*.hoc" \) \
+            -exec cp {} _site/images/ \;
+
+          echo "--- Site inventory ---"
+          find _site -type f | sort
+
+      - name: Deploy to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./_site
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: "deploy: wormsim2 GUI → gh-pages [skip ci]"

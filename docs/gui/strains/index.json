@@ -1,0 +1,9 @@
+{
+  "version": "0.1.0",
+  "updated": "2026-06-29",
+  "strains": [
+    { "id": "n2_wt",        "strain": "N2",             "wormsim2_version": "v0.12.1", "date": "2026-06-29" },
+    { "id": "nca1_gk9",     "strain": "nca-1(gk9)",     "wormsim2_version": "v0.12.1", "date": "2026-06-29" },
+    { "id": "egl19_n2368",  "strain": "egl-19(n2368)",  "wormsim2_version": "v0.12.1", "date": "2026-06-29" }
+  ]
+}

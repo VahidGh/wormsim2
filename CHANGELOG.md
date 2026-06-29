@@ -12,7 +12,110 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.11.2] - 2026-06-28 *(current)*
+## [0.12.1] - 2026-06-29 *(current)*
+
+### Added
+- **`docs/gui/strains/`** — per-strain directory structure (`index.json` manifest + `<id>/meta.json`
+  + `<id>/tuner.wcon`) for all 3 strains (n2_wt, nca1_gk9, egl19_n2368); GUI discovers strains
+  dynamically without hardcoded JS objects.
+- **`docs/gui/index.html`** — tab bar (🔍 Search / ✓ Pre-tuned); `renderPretuned()` grid of
+  clickable pre-tuned strain cards; dynamic strain loading via `strains/index.json` + per-strain
+  `meta.json`; `linkifyText()` + boilerplate filter for OWMD descriptions; dropdown now shows
+  ✓ Pre-tuned and ○ OWMD sections only (static 30-entry catalog removed — live Zenodo search
+  used instead); non-pre-tuned strains show "🔧 Online tuner — under construction" placeholder
+  (see [issue #1](https://github.com/VahidGh/wormsim2/issues/1)).
+- **`docs/USAGE_GUIDE.md`** — comprehensive installation + usage guide: 4-environment table,
+  CLI usage, GUI local server, GH Pages deployment, GH Actions server-side tuner (Scenario B).
+- **`.github/workflows/tuner.yml`** — `workflow_dispatch` GH Actions tuner: inputs `zenodo_id`,
+  `strain_id`, `strain_name`, `strain_type`; fetches WCON, runs pipeline, commits strain dir.
+- **`src/python/pipeline.py`** — `wcon_to_skeleton_csv()`, `write_strain_dir()`, `run_from_wcon()`,
+  `_get_version()`; CLI adds `--wcon-file`, `--strain-id`, `--strain-name`, `--strain-type`.
+- **README** — version badge → v0.12.1; link to `docs/USAGE_GUIDE.md`.
+
+### Changed
+- **`.github/workflows/gh-pages.yml`** — deploy `docs/gui/strains/` and `zenodo_catalog.json`
+  to `_site/`; added pipeline YAML outputs to deployed images.
+
+---
+
+## [0.12.0] - 2026-06-28
+
+### Added
+- **`src/python/pipeline.py`** — `WormSimPipeline`: end-to-end scenario runner with `SCENARIOS`
+  registry (n2_wt, nca_knockout, egl19_rof); `run()` → scenario JSON dict with metrics,
+  `tuner_params`, `hardware`, `perturbation`, `outputs`, `downloads`; `save()` writes to
+  `docs/gui/scenarios/`; `_describe_parallelism()` renders human-readable backend label.
+  CLI: `python -m pipeline [--scenario n2_wt|nca_knockout|egl19_rof|all] [--list]`.
+- **`src/python/vtu_export.py`** — XML-based VTK/ParaView/PyVista exporter; no VTK library
+  required; `export_trajectory(x_real, y_real, x_sim, y_sim, t_s, name, out_dir)` produces a
+  ZIP containing `<name>.pvd` + `frames/frame_NNNN.vtu` (VTK_LINE cells, PointData fields
+  `worm_id` 0=real/1=simulated and `keypoint_index` 0=head…48=tail) + `README.txt` with
+  ParaView/PyVista usage examples.
+- **`docs/gui/index.html`** (v0.12.0 redesign) — single-page GitHub Pages GUI; compact dark
+  header + full-width searchable strain dropdown populated from the Open Worm Movement Database
+  (Zenodo community API, fetched on load); pre-computed strains (N2 WT, nca-1(gk9),
+  egl-19(n2368)) load instantly via full-viewport `<iframe>`; OWMD strains selected from the
+  dropdown fetch WCON from Zenodo (JSZip in-browser unzip if `.wcon.zip`), then run the full
+  4-mode PCA NeuromuscularTuner (numpy `linalg.svd`) via Pyodide and render the two-panel
+  Plotly animation inline; strain info bar shows Zenodo link + YouTube embed (parsed from
+  `related_identifiers`); Downloads strip: WCON (Zenodo), VTU ZIP, NeuroML2 drive, NEURON .hoc,
+  perf-log JSON (in-memory for dynamically computed strains); manual WCON upload fallback for
+  CORS-blocked records; REMOVED: scenario tab bar, Parameters sub-tab, Hardware sub-tab,
+  "Download scenario log (JSON)" button.
+- **`docs/images/v1200_nca1_plate_600s.html`** — nca-1(gk9) [unc-77] agar-plate Plotly HTML
+  (real WCON data, Zenodo 1003571, Open Worm Movement Database 2011); 900 s recording; 25 274
+  valid frames subsampled to 632 animation frames (×40); left=real WCON (6 tracker-swap flips
+  corrected by `correct_head_tail_flips`), right=4-mode PCA tuner reconstruction; bl=1.036 mm,
+  path=129.6 BL, var_exp=0.842, tuner_err=0.037 BL; head=index 0; fainting episodes visible as
+  collapse/recovery events; 13.5 MB.
+- **`docs/images/v1200_egl19_plate_600s.html`** — egl-19(n2368) agar-plate Plotly HTML (real
+  WCON data, Zenodo 1030607, Open Worm Movement Database 2010); 900 s recording; 18 558 valid
+  frames subsampled to 640 animation frames (×29); left=real WCON (1 tracker-swap flip corrected),
+  right=4-mode PCA tuner reconstruction; bl=0.687 mm, path=109.6 BL, var_exp=0.674,
+  tuner_err=0.102 BL; head=index 0; lower var_exp vs N2 reflects irregular posture from reduced
+  Ca²⁺ channel activity; 12.6 MB.
+- **`.github/workflows/gh-pages.yml`** — GH Pages deployment workflow triggered on push to
+  `main`; assembles `_site/` (GUI `index.html`, scenario JSONs, VTU ZIPs, HTMLs, CSV/NML/HOC/YAML
+  pipeline outputs) and deploys via `peaceiris/actions-gh-pages@v4` to `gh-pages` branch.
+- **`docs/gui/scenarios/n2_wt.json`**, **`nca_knockout.json`**, **`egl19_rof.json`** —
+  pre-computed scenario data files consumed by GUI; nca_knockout and egl19_rof now use real WCON
+  data (Zenodo 1003571 and 1030607) instead of synthetic perturbation; each JSON has `plotly_html`
+  output key (relative path for iframe), `metrics` from real recording, and Zenodo download links.
+- **VTU ZIP archives in `docs/gui/downloads/`**:
+  - `n2_wt_600s_vtu.zip` (397 KB, 220 frames, full 600 s)
+  - `n2_wt_4s_vtu.zip` (202 KB, 114 frames, 4 s tuner window)
+  - `nca_knockout_vtu.zip` (143 KB, 80 frames)
+  - `egl19_rof_vtu.zip` (143 KB, 80 frames)
+
+### Fixed
+- **`src/python/tuner.py` — `correct_head_tail_flips()`** (new module-level function) — robust
+  head/tail tracking-swap corrector for WCON skeleton arrays.  Previous approach (gap_thresh=5 s,
+  direction-only gate) missed all fainting-episode re-acquisitions in nca-1 (7 gaps at 0.5–2.6 s)
+  and egl-19 (3 gaps at 0.12–2.0 s), leaving the PCA computed on a mixture of forward and
+  head-swapped orientations.  New two-stage algorithm: (1) direction gate — gap > `gap_thresh`
+  (default 0.2 s) **and** mean body-direction change > π/2; (2) shape-continuity test — compares
+  the body tangent-angle profile before and after the gap in original vs. flipped orientation
+  (`theta_after[::-1] + π`); applies the reversal only when the flipped profile has lower RMS
+  angular error, preventing false positives during genuine behavioural reversals.  Results after
+  applying to mutant recordings: nca-1 6 flips corrected (1 gap correctly identified as genuine
+  reversal and skipped), var_exp 0.826 → 0.842, tuner_err 0.045 → 0.037 BL; egl-19 1 flip
+  corrected (2 gaps correctly skipped as genuine reversals), var_exp 0.660 → 0.674, tuner_err
+  0.115 → 0.102 BL.  Also exports `_body_theta()`, `_mean_body_dir()`, `_angular_rms()` as
+  module-level helpers.
+- **`.github/workflows/slurm-deploy.yml` — `.sif` upload redesigned for 2 GB GitHub release-asset
+  limit** — `wormsim2.sif` (CUDA 12.4 + JAX + C++ tools, 3–5 GB) exceeds the GitHub Releases hard
+  cap of 2,147,483,648 bytes.  Fix: push `.sif` to GHCR via ORAS (`apptainer push
+  oras://ghcr.io/VahidGh/wormsim2:<tag>-sif`; requires `packages: write` permission on the job);
+  upload only metadata to the release (`wormsim2.sif.sha256`, `wormsim2-sif-info.txt`,
+  `wormsim2-sif-smoke.txt`) and append the Apptainer pull command to the release body.  Separate
+  conditional step for `.sif.asc` GPG upload (ternary expressions not evaluated in
+  `softprops/action-gh-release` `files:` strings).  Non-breaking Node 20 deprecation warning
+  from `eWaterCycle/setup-apptainer@v2` documented in workflow comment; no functional fix until
+  upstream v3.
+
+---
+
+## [0.11.2] - 2026-06-28
 
 ### Fixed
 - **Head/tail flip correction in N2 WCON processing** — the N2 recording (Zenodo 1031837)

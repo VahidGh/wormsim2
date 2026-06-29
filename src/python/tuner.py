@@ -689,6 +689,223 @@ _MUTANT_LITERATURE.update({
 })
 
 
+def _body_theta(x_row: np.ndarray, y_row: np.ndarray) -> np.ndarray:
+    """Body tangent angles (rad) for a single skeleton frame: arctan2(dy,dx)+π/2."""
+    dx = np.diff(x_row); dy = np.diff(y_row)
+    return np.arctan2(dy, dx) + np.pi / 2
+
+
+def _mean_body_dir(xf: np.ndarray, yf: np.ndarray) -> float:
+    """Circular mean of body tangent angles over a window of frames."""
+    dx = np.diff(xf, axis=1); dy = np.diff(yf, axis=1)
+    return float(np.angle(np.exp(1j * np.arctan2(dy, dx)).mean()))
+
+
+def _angular_rms(a: np.ndarray, b: np.ndarray) -> float:
+    """RMS angular difference between two angle sequences, wrapped to [-π, π]."""
+    d = a - b
+    d = np.arctan2(np.sin(d), np.cos(d))
+    return float(np.sqrt((d ** 2).mean()))
+
+
+def correct_head_tail_flips(
+    x_f: np.ndarray,
+    y_f: np.ndarray,
+    t_f: np.ndarray,
+    gap_thresh: float = 0.2,
+    dir_thresh: float = np.pi / 4,
+    win: int = 10,
+) -> list[tuple[float, float, float, float]]:
+    """Detect and correct head/tail tracking swaps in WCON skeleton arrays.
+
+    Trackers (e.g. Tierpsy) sometimes re-acquire a worm after a pause or
+    fainting episode with head and tail swapped.  The classic symptom is a
+    sudden ~180° flip in the mean body-direction angle at a time gap.
+
+    Two-stage test to avoid false positives from genuine reversals:
+      1. Body-direction gate: gap dt > ``gap_thresh`` **and** mean direction
+         change > ``dir_thresh`` (default π/2 ≈ 90°).
+      2. Shape-continuity test: compare the body tangent-angle profile of the
+         last frame before the gap against the first frame after the gap in
+         original and flipped orientation.  The flipped profile is
+         ``theta_after[::-1] + π`` (reversed + π-shift, which is the exact
+         mathematical inverse of a head/tail swap).  If the flipped error is
+         smaller we have a tracking swap; otherwise it is a genuine reversal
+         and we leave the data unchanged.
+
+    Modifies ``x_f`` and ``y_f`` **in place** (``[::-1]`` reversal of the
+    keypoint axis from the gap onwards).
+
+    Args:
+        x_f: (N, K) skeleton x-coordinates in body-length units.
+        y_f: (N, K) skeleton y-coordinates in body-length units.
+        t_f: (N,)   timestamps in seconds.
+        gap_thresh: minimum time gap (s) to inspect (default 0.2 s).
+        dir_thresh: minimum body-direction change (rad) to trigger the shape
+                    test (default π/4 ≈ 45°; lower than π/2 to catch swaps at
+                    long gaps where worm motion blurs the raw direction change).
+        win:        number of frames to use for the mean-direction window.
+
+    Returns:
+        List of (t_before, t_after, dt, dir_change_deg) tuples for each flip
+        that was applied.  Empty list if no flips were corrected.
+    """
+    flips: list[tuple[float, float, float, float]] = []
+    dt = np.diff(t_f)
+
+    for g in np.where(dt > gap_thresh)[0]:
+        # ── Stage 1: body-direction gate ──────────────────────────────────────
+        db = _mean_body_dir(x_f[max(0, g - win):g + 1],
+                            y_f[max(0, g - win):g + 1])
+        da = _mean_body_dir(x_f[g + 1:g + 1 + win],
+                            y_f[g + 1:g + 1 + win])
+        dir_diff = float(np.angle(np.exp(1j * (da - db))))
+
+        if abs(dir_diff) < dir_thresh:
+            continue  # small direction change → no swap
+
+        # ── Stage 2: body-shape continuity ────────────────────────────────────
+        theta_b = _body_theta(x_f[g],     y_f[g])      # last frame before gap
+        theta_a = _body_theta(x_f[g + 1], y_f[g + 1])  # first frame after gap
+
+        # Under a head/tail swap: theta_after[s] ≈ theta_before[K-2-s] + π
+        err_same    = _angular_rms(theta_b, theta_a)
+        err_flipped = _angular_rms(theta_b, theta_a[::-1] + np.pi)
+
+        if err_flipped >= err_same:
+            # Shape fits better WITHOUT flipping → genuine reversal, not a swap
+            continue
+
+        # ── Apply correction ──────────────────────────────────────────────────
+        x_f[g + 1:] = x_f[g + 1:, ::-1]
+        y_f[g + 1:] = y_f[g + 1:, ::-1]
+        flips.append((float(t_f[g]), float(t_f[g + 1]),
+                      float(dt[g]), float(np.degrees(dir_diff))))
+
+    return flips
+
+
+def optimal_head_tail_flips(
+    x_f: np.ndarray,
+    y_f: np.ndarray,
+    t_f: np.ndarray,
+    n_modes: int = 4,
+    gap_thresh: float = 0.2,
+    dir_thresh: float = np.pi / 4,
+    win: int = 10,
+    max_candidates: int = 20,
+) -> list[tuple[float, float, float, float]]:
+    """Score-optimised head/tail flip correction via brute-force search.
+
+    Builds a candidate set (direction gate + shape test on raw data), then
+    evaluates all 2ⁿ combinations of applying vs. skipping each candidate.
+    Selects the combination that maximises the **weighted-average per-segment
+    PCA var_explained** — the fraction of posture variance captured by
+    ``n_modes`` eigenworms, averaged over each segment between candidates and
+    weighted by segment length.
+
+    This metric is robust to two failure modes of simpler approaches:
+
+    * **Global var_exp** is inflated when swapped data forms a minority of
+      frames (e.g. N2: post-gap 26 % of recording — the mixed-orientation
+      distribution happens to have higher global var_exp).
+    * **Min-segment** stalls when one segment is genuinely low-variance
+      (e.g. egl-19 first segment, which is naturally irregular due to reduced
+      Caᵥ1.2 activity).
+
+    Modifies ``x_f`` and ``y_f`` **in place**.
+
+    Args:
+        x_f: (N, K) skeleton x-coordinates in body-length units.
+        y_f: (N, K) skeleton y-coordinates in body-length units.
+        t_f: (N,)   timestamps in seconds.
+        n_modes:       PCA modes used for scoring (default 4).
+        gap_thresh:    minimum time gap (s) to inspect (default 0.2 s).
+        dir_thresh:    minimum mean body-direction change (rad) to pass the
+                       shape test gate (default π/4 ≈ 45°).
+        win:           window size for mean-direction computation.
+        max_candidates: abort with ValueError above this many candidates to
+                        avoid exponential blow-up (default 20 → at most
+                        1 048 576 combinations).
+
+    Returns:
+        List of (t_before, t_after, dt, dir_change_deg) for every flip applied.
+    """
+    import itertools
+
+    dt_arr = np.diff(t_f)
+
+    # ── Candidate discovery on raw data ───────────────────────────────────────
+    cand_gaps: list[tuple[int, float, float, float, float]] = []
+    for g in np.where(dt_arr > gap_thresh)[0]:
+        db = _mean_body_dir(x_f[max(0, g - win):g + 1],
+                            y_f[max(0, g - win):g + 1])
+        da = _mean_body_dir(x_f[g + 1:g + 1 + win],
+                            y_f[g + 1:g + 1 + win])
+        ddir = float(np.angle(np.exp(1j * (da - db))))
+        if abs(ddir) < dir_thresh:
+            continue
+        tb = _body_theta(x_f[g], y_f[g])
+        ta = _body_theta(x_f[g + 1], y_f[g + 1])
+        if _angular_rms(tb, ta[::-1] + np.pi) < _angular_rms(tb, ta):
+            cand_gaps.append((g, float(t_f[g]), float(t_f[g + 1]),
+                              float(dt_arr[g]), float(np.degrees(ddir))))
+
+    if not cand_gaps:
+        return []
+    if len(cand_gaps) > max_candidates:
+        raise ValueError(
+            f"optimal_head_tail_flips: {len(cand_gaps)} candidates exceed "
+            f"max_candidates={max_candidates}; reduce dir_thresh or increase max_candidates"
+        )
+
+    gap_frames = [g for g, *_ in cand_gaps]
+    n = len(cand_gaps)
+    N = len(t_f)
+    bounds = [0] + [g + 1 for g in gap_frames] + [N]
+
+    # ── Scoring: weighted-average per-segment var_exp ─────────────────────────
+    def _score(mask: tuple) -> float:
+        x = x_f.copy(); y = y_f.copy()
+        for g, flip in zip(gap_frames, mask):
+            if flip:
+                x[g + 1:] = x[g + 1:, ::-1]
+                y[g + 1:] = y[g + 1:, ::-1]
+        bl = np.sqrt(np.diff(x, axis=1) ** 2 + np.diff(y, axis=1) ** 2).sum(axis=1).mean()
+        cx = x.mean(axis=1); cy = y.mean(axis=1)
+        xs = (x - cx[:, None]) / bl; ys = (y - cy[:, None]) / bl
+        theta = np.arctan2(np.diff(ys, axis=1), np.diff(xs, axis=1)) + np.pi / 2
+        total_n = 0; total_ve = 0.0
+        for a, b in zip(bounds[:-1], bounds[1:]):
+            seg = theta[a:b]
+            if len(seg) < 5:
+                continue
+            mu = seg.mean(axis=0)
+            _, S, _ = np.linalg.svd(seg - mu, full_matrices=False)
+            ve = float((S[:n_modes] ** 2).sum() / (S ** 2).sum())
+            total_ve += ve * (b - a)
+            total_n  += (b - a)
+        return total_ve / total_n if total_n else 0.0
+
+    # ── Brute-force over 2ⁿ combinations ─────────────────────────────────────
+    best_score = -1.0
+    best_mask: tuple = (0,) * n
+    for mask in itertools.product([0, 1], repeat=n):
+        s = _score(mask)
+        if s > best_score:
+            best_score = s; best_mask = mask
+
+    # ── Apply optimal mask in-place ────────────────────────────────────────────
+    flips: list[tuple[float, float, float, float]] = []
+    for (g, tb, ta, dt_g, ddir), flip in zip(cand_gaps, best_mask):
+        if flip:
+            x_f[g + 1:] = x_f[g + 1:, ::-1]
+            y_f[g + 1:] = y_f[g + 1:, ::-1]
+            flips.append((tb, ta, dt_g, ddir))
+
+    return flips
+
+
 def _skeleton_worker(args: tuple) -> np.ndarray:
     """Top-level worker for ProcessPoolExecutor (must be picklable)."""
     cfg_dict, method_name, kwargs = args
