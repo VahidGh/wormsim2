@@ -90,19 +90,25 @@ jobs:
           fi
           cat wormsim2.sif.sha256
 
-      - name: Push .sif to GHCR via ORAS (avoids 2 GB release-asset cap)
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "$GITHUB_TOKEN" | apptainer remote login \
-            --username "${{ github.actor }}" --password-stdin \
-            oras://ghcr.io
-          SIF_TAG="${{ github.ref_name }}-sif"
-          apptainer push wormsim2.sif \
-            "oras://ghcr.io/${{ github.repository_owner }}/wormsim2:${SIF_TAG}"
-          echo "sif_tag=${SIF_TAG}" >> $GITHUB_ENV
-          echo "Pushed: ghcr.io/${{ github.repository_owner }}/wormsim2:${SIF_TAG}"
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | apptainer registry login --username ${{ github.actor }} --password-stdin oras://ghcr.io
+
+      - name: Push Apptainer Image
+        run: apptainer push wormsim2.sif oras://ghcr.io/vahidgh/wormsim2:v0.12.1-sif
+
+      # - name: Push .sif to GHCR via ORAS (avoids 2 GB release-asset cap)
+      #   if: startsWith(github.ref, 'refs/tags/')
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   run: |
+      #     echo "$GITHUB_TOKEN" | apptainer remote login \
+      #       --username "${{ github.actor }}" --password-stdin \
+      #       oras://ghcr.io
+      #     SIF_TAG="${{ github.ref_name }}-sif"
+      #     apptainer push wormsim2.sif \
+      #       "oras://ghcr.io/${{ github.repository_owner }}/wormsim2:${SIF_TAG}"
+      #     echo "sif_tag=${SIF_TAG}" >> $GITHUB_ENV
+      #     echo "Pushed: ghcr.io/${{ github.repository_owner }}/wormsim2:${SIF_TAG}"
 
       - name: Upload release assets (metadata only — .sif on GHCR)
         if: startsWith(github.ref, 'refs/tags/')
