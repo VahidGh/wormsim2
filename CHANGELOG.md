@@ -12,7 +12,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.12.1] - 2026-06-29 *(current)*
+## [0.12.2] - 2026-06-30 *(current)*
+
+### Added
+- **`docs/install/local_dev_docker.md`** — two C++-core-only worked examples reproducing
+  published figures end-to-end inside Docker: `muscle_trace` vs Boyle & Cohen 2008 Fig. 2A
+  (`wormsim2-dev`), and `fem_body_trace` vs the N2 undulation-frequency band (Polimi MK
+  toolchain image, since `wormsim2-dev` doesn't bundle deal.II); a "no GPU passthrough via
+  Docker? run natively" section showing the native macOS OpenCL path.
+- **`docs/install/local_gpu_docker.md`** — matching "no GPU passthrough via Docker" section
+  for the Linux/NVIDIA guide, with the real Intel Iris 645 OpenCL benchmark numbers.
+- **`docs/design/uml/wormsim2_component_diagram.puml`** — UML2 component & module diagram
+  (PlantUML) of the as-implemented architecture; rendered to
+  `docs/images/wormsim2_component_diagram.png` and embedded in
+  `docs/design/02-architecture-design.md` §1.1.
+- **`docs/images/`** — `local_docker_muscle_trace_cpp.png`, `ref_boylecohen2008_muscle_model.png`,
+  `local_docker_fem_body_trace.png` (outputs of the new worked examples above).
+- **README** — benchmark table replaced with real 17,226-frame N2 WCON results
+  (`numpy_batch` 53×, `opencl_gpu` 40× on Intel Iris 645, CUDA est. ≥300×), superseding the
+  old 871-frame synthetic-tile numbers; new install-guide row for `local_dev_docker.md`.
+
+### Fixed
+- **`src/python/backends.py`** — `benchmark_backends()` no longer reports a duplicate
+  `opencl_gpu` row when `jax_cpu` silently falls back to OpenCL (JAX not installed);
+  results are deduplicated by backend class.
+- **`notebooks/project_tour.ipynb`** — CV-11.1 benchmark cell now uses the real N2 WCON
+  recording (17,226 frames) instead of a tiled 912-frame CSV subset, and includes the
+  `opencl_gpu` backend; stale `mps`-recommended output replaced with a fresh execution.
+
+---
+
+## [0.12.1] - 2026-06-29
 
 ### Added
 - **`docs/gui/strains/`** — per-strain directory structure (`index.json` manifest + `<id>/meta.json`

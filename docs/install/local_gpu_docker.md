@@ -167,6 +167,73 @@ When `hardware.py` detects OpenCL, `recommended_backend` is set to `"opencl"` an
 
 ---
 
+## 6. No GPU passthrough via Docker? Run natively on the host
+
+This whole guide assumes `--gpus all` (NVIDIA Container Toolkit) or `--device=/dev/dri`
+(AMD/Intel) GPU passthrough into the container. **Neither exists on macOS** — Docker
+Desktop on Mac runs containers inside a Linux VM with no path to the host's GPU at all
+(no CUDA on macOS since 10.2; no Metal inside a Linux container). If you're on a Mac, or
+any host where Docker GPU passthrough isn't available, skip the container entirely and
+run the Python backend natively against the host's own OpenCL/Metal driver.
+
+This is exactly what we did to get a real GPU benchmark on a non-NVIDIA dev laptop
+(Intel Core i5-8257U, **Intel Iris Plus 645** integrated GPU, no Docker involved):
+
+**1. Install `pyopencl` on the host** (not in any container):
+
+```bash
+pip3 install pyopencl
+```
+
+**2. Confirm the host driver exposes the GPU** — on macOS this is Apple's built-in
+OpenCL ICD (deprecated since macOS 12 but still functional); on Linux it's whatever
+vendor runtime is installed (`beignet`/Intel Compute Runtime, ROCm, etc.):
+
+```python
+import pyopencl as cl
+for p in cl.get_platforms():
+    for d in p.get_devices():
+        print(p.name, '|', d.name, '|', cl.device_type.to_string(d.type),
+              '| CUs:', d.max_compute_units)
+```
+
+```
+Apple | Intel(R) Core(TM) i5-8257U CPU @ 1.40GHz | CPU | CUs: 8
+Apple | Intel(R) Iris(TM) Plus Graphics 645      | GPU | CUs: 48
+```
+
+**3. Run the benchmark natively** — `backends.py` needs no container, no CUDA, no
+special build step; `OpenCLBackend` auto-selects the GPU device:
+
+```python
+import sys; sys.path.insert(0, 'src/python')
+from backends import benchmark_backends
+import numpy as np
+
+# real 600 s N2 WCON recording, 17,226 valid frames (see notebooks/project_tour.ipynb CV-11.1)
+theta_body = ...  # loaded from data/raw/wcon_raw/N2_*.wcon
+results = benchmark_backends(theta_body, ds=1/48, mid_idx=24,
+                              backends=['numpy_serial','numpy_batch','numpy_mp','opencl','jax_cpu'])
+```
+
+**Actual result of this run** (captured on the dev laptop, no Docker):
+
+```
+numpy_serial                  24,658 fps   1.0x
+numpy_batch                1,322,804 fps  53.6x
+numpy_mp                     420,529 fps  17.1x
+opencl_gpu (Intel Iris 645)   994,013 fps  40.3x
+```
+
+The Intel Iris 645 — a weak integrated GPU with no dedicated VRAM — still gets 40×
+over serial once the workload is large enough (17,226 frames) to amortize OpenCL's
+kernel-launch overhead; at 200 frames the same GPU only scored 2.7× (see
+`README.md` benchmark table). The takeaway: **GPU passthrough through Docker is a
+convenience, not a requirement** — the same `backends.py` code path runs identically
+inside or outside a container, on any OpenCL-capable device, NVIDIA or not.
+
+---
+
 ## Troubleshooting
 
 | Problem | Fix |

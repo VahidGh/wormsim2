@@ -1,0 +1,58 @@
+@startuml wormsim2_component_diagram
+skinparam backgroundColor white
+skinparam componentStyle uml2
+skinparam shadowing false
+skinparam defaultFontName Helvetica
+skinparam defaultFontSize 13
+skinparam ArrowColor #0A1A4D
+skinparam ArrowFontSize 11
+skinparam ArrowFontColor #0A1A4D
+skinparam nodesep 30
+skinparam ranksep 40
+
+skinparam component {
+  BackgroundColor #EEF0F5
+  BorderColor #0A1A4D
+  FontColor #0A1A4D
+}
+skinparam interface {
+  BackgroundColor white
+  BorderColor #0A1A4D
+}
+skinparam artifact {
+  BackgroundColor #EEF0F5
+  BorderColor #0A1A4D
+  FontColor #0A1A4D
+}
+
+title wormsim2 — Component & Module View (v0.12.1, as implemented)
+
+' ── Row 1: left to right ──────────────────────────────────────────────
+artifact "Network input\nNEURON .hoc+.mod | NeuroML2 .nml\nperturbation spec" as INPUT
+component "wormsim2_io «static lib»\n--\nNetworkInputParser, NEURONLoader,\nNeuroMLLoader, PerturbationConfig" as IO
+component "wormsim2_neural «static lib»\n--\nNeuralIntegrator (HH, Rush-Larsen, OpenMP)" as NEURAL
+
+INPUT -right-> IO
+IO -right-> NEURAL : load()\nNetworkConfig
+
+' ── Row 2: right to left (snake back), BODY aligns under NEURAL ───────
+component "wormsim2_body «static lib»\n--\nEigenwormBody, WCONExporter" as BODY
+component "wormsim2_body_fem «static lib, deal.II»\n--\nFEMBody, CorotatedElastic (UMFPACK)" as FEM
+component "CLI tools\n--\nneural_trace, body_trace,\nfem_body_trace, connectome_trace" as TOOLS
+
+BODY -left-> FEM : activation[95]
+FEM -left-> TOOLS : positions[]
+
+' ── Row 3: left to right again, OUT aligns under TOOLS ────────────────
+artifact "CSV / WCON\noutput" as OUT
+component "Python layer\n--\nhardware.py, backends.py (NumPy/OpenCL/JAX),\ntuner.py (PCA fit), pipeline.py (orchestration)" as PY
+component "Outputs\n--\nGitHub Pages GUI (Plotly)\nproject_tour.ipynb (CV suite)" as OUTPUTS
+
+OUT -right-> PY
+PY -right-> OUTPUTS
+
+' ── Vertical connectors between rows (the real data-flow link) ────────
+NEURAL -down-> BODY : step(dt, i_ext)\nNeuralState
+TOOLS -down-> OUT
+
+@enduml

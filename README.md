@@ -1,6 +1,6 @@
 # wormsim2
 
-[![Version](https://img.shields.io/badge/version-v0.12.1-blue?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.12.2-blue?style=flat-square)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Language](https://img.shields.io/badge/language-C%2B%2B20-blue?style=flat-square)](src/cpp/)
 [![Backends](https://img.shields.io/badge/backends-CPU%20%7C%20CUDA%20%7C%20OpenCL-76b900?style=flat-square)](docs/research/00-motivation-objectives-related-work.md)
@@ -59,10 +59,11 @@ Choose the guide that matches your environment:
 
 | Environment                                   | Guide                                                                 | Notes                                                                 |
 | --------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| **Local CPU** (macOS / Linux)           | [`docs/install/local_cpu.md`](docs/install/local_cpu.md)               | NumPy + JAX[cpu] + OpenMP C++; no GPU required                        |
-| **Local GPU — CUDA / OpenCL** (Docker) | [`docs/install/local_gpu_docker.md`](docs/install/local_gpu_docker.md) | NVIDIA CUDA + PyOpenCL on Linux; Docker +`nvidia-container-toolkit` |
+| **Local dev — Docker** (macOS / Linux)  | [`docs/install/local_dev_docker.md`](docs/install/local_dev_docker.md) | `Dockerfile.wormsim2-dev`: GCC + CMake + clang-tidy; same image as CI |
+| **Local CPU** (macOS / Linux, no Docker)| [`docs/install/local_cpu.md`](docs/install/local_cpu.md)               | NumPy + JAX[cpu] + OpenMP C++; native install                         |
+| **Local GPU — CUDA / OpenCL** (Docker)  | [`docs/install/local_gpu_docker.md`](docs/install/local_gpu_docker.md) | NVIDIA CUDA + PyOpenCL on Linux; Docker + `nvidia-container-toolkit`  |
 | **HPC / SLURM** (CINECA G100)           | [`docs/install/hpc_slurm.md`](docs/install/hpc_slurm.md)               | Singularity + SLURM; targets Tesla V100S 32 GB                        |
-| **CI / GitHub Actions**                 | [`docs/install/github_actions.md`](docs/install/github_actions.md)     | Ubuntu runner;`jax[cpu]` + `pyopencl` (Intel ICD fallback)        |
+| **CI / GitHub Actions**                 | [`docs/install/github_actions.md`](docs/install/github_actions.md)     | Ubuntu runner; `jax[cpu]` + `pyopencl` (Intel ICD fallback)          |
 
 ---
 
@@ -127,18 +128,26 @@ replaces the FK round-trip right panel with the true NeuromuscularTuner 4-mode P
 v0.11.1 adds agar-plate visualization (CV-11.5). v0.11.0 adds hardware detection, parallel
 skeleton backends, C++ OpenMP, and installation guides.
 All prior CVs (CV-8.1.1, CV-10.2, CV-10.7, CV-10.8) are repeated as CV-11.2–11.4
-with **30-second full-length simulation**, **real-data initialization** from `theta_rec[0]`,
-and NumPy-batch backend (**62.7×** faster than serial NumPy on this dev machine).
+with **30-second full-length simulation** and **real-data initialization** from `theta_rec[0]`.
 
-| Backend               | fps (871 frames)     | speedup          |
-| --------------------- | -------------------- | ---------------- |
-| numpy_serial          | ~21,000              | 1.0×            |
-| jax_cpu (XLA)         | ~520,000             | 24.8×           |
-| **numpy_batch** | **~1,300,000** | **62.7×** |
-| jax_cuda (V100S est.) | —                   | ~200–500×      |
+Backend benchmark on the **real N2 WCON recording** (Zenodo 1031837, 17,226 valid frames,
+600 s @ 30 fps) — see `notebooks/project_tour.ipynb` CV-11.1:
 
-> HPC estimate (CINECA G100, Tesla V100S, 6912 CUDA cores):
-> Amdahl f_par=97% → theoretical 33×; practical JAX-CUDA vs serial: **~200–500×**.
+| Backend                          | fps (17,226 frames) | speedup        | machine                      |
+| --------------------------------- | -------------------- | -------------- | ----------------------------- |
+| numpy_serial                      | ~25,000               | 1.0×           | dev laptop (Intel i5-8257U)   |
+| numpy_mp (4 cores)                | ~420,000              | 17×            | dev laptop                    |
+| jax_cpu (XLA)                     | ~360,000              | 10.4×          | CINECA G100 (Xeon 8260)\*     |
+| **numpy_batch**                   | **~1,320,000**        | **~53×**       | dev laptop                    |
+| **opencl_gpu (Intel Iris 645)**   | **~994,000**          | **~40×**       | dev laptop iGPU (48 EUs)      |
+| numpy_batch                       | ~1,357,000            | 39.2×          | CINECA G100\*                 |
+| CUDA (V100S, estimated)           | —                    | **≥300×**      | CINECA G100 (GPU partition)   |
+
+\* G100 figures measured with 200 synthetic frames (smaller workload); a 17K-frame
+re-run is pending re-submission. The dev-laptop iGPU result confirms the GPU-threshold
+effect predicted by Amdahl's law: the same Intel Iris 645 scored only **2.7×** at
+200 frames (kernel-launch overhead dominated) vs **40×** at 17,226 frames.
+
 > Full installation guides: [`docs/install/`](docs/install/)
 
 <img src="docs/images/v1105_n2_plate_600s.gif" width="900" alt="CV-11.5b — N2 WT agar-plate view 600 s (flip-corrected, 4-mode PCA tuner)"/>

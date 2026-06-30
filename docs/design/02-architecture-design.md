@@ -64,6 +64,34 @@ the user-supplied network model files — either NEURON (`.hoc` + `.mod`) or Neu
 | Output decoupling | Output schema between engine and viewer | Allows viewer to evolve independently; enables WCON export without engine changes (G7) |
 | Data flow style | Synchronous pipeline per tick + async output | Predictable latency per frame; output write never blocks the simulation loop |
 
+### 1.1 Component diagram — current implementation (v0.12.1)
+
+The diagram above describes the original design intent. The diagram below is the
+**actual implemented architecture** as of v0.12.1 — every node names a real CMake
+target or Python module in the repository. It differs from the original design in
+two ways worth flagging explicitly: (1) there is no separate `ComputeBackend`
+C++ interface yet (§5 below remains the plan; OpenMP is the only parallel backend
+in the C++ core today) — the NumPy/OpenCL/JAX backends in §5.2 are implemented in
+**Python** (`backends.py`) for the skeleton/kinematics layer, not as C++
+`CpuOpenMpBackend`/`CudaBackend`/`OpenClBackend` classes; (2) the proprioceptive
+feedback loop (layer 5) is not yet wired — `EnvironmentModel` and
+`ProprioceptiveFeedback` remain open design items (ISSUE-004). Same diagram is in
+the AMSC report, `.dev/polimi/amsc-project-report.tex`, Section 1.3.
+
+![wormsim2 component & module view](../images/wormsim2_component_diagram.png)
+
+UML2 component diagram (PlantUML), source: [`docs/design/uml/wormsim2_component_diagram.puml`](uml/wormsim2_component_diagram.puml).
+Provided interfaces are shown as UML lollipops (`load()`, `step(dt, i_ext)`,
+`step(activation[95])`); package stereotypes (`«static lib»`, `«static lib, deal.II»`)
+mark the CMake target each package corresponds to. Regenerate after any architecture
+change with:
+
+```bash
+docker run --rm -v "$(pwd)":/work plantuml/plantuml:latest -tpng \
+  /work/docs/design/uml/wormsim2_component_diagram.puml
+cp docs/design/uml/wormsim2_component_diagram.png docs/images/
+```
+
 ---
 
 ## 2. Component & Connector View

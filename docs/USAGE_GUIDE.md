@@ -41,7 +41,8 @@ Choose the guide that matches your environment:
 
 | Environment | Guide | Notes |
 |---|---|---|
-| **Local CPU** (macOS / Linux) | [`docs/install/local_cpu.md`](docs/install/local_cpu.md) | NumPy + JAX[cpu] + OpenMP C++; no GPU required |
+| **Local dev — Docker** (macOS / Linux) | [`docs/install/local_dev_docker.md`](docs/install/local_dev_docker.md) | `Dockerfile.wormsim2-dev`: GCC + CMake + clang-tidy; same image as CI; no GPU needed |
+| **Local CPU** (macOS / Linux, no Docker) | [`docs/install/local_cpu.md`](docs/install/local_cpu.md) | NumPy + JAX[cpu] + OpenMP C++; native install |
 | **Local GPU — CUDA / OpenCL** (Docker) | [`docs/install/local_gpu_docker.md`](docs/install/local_gpu_docker.md) | NVIDIA CUDA + PyOpenCL on Linux; Docker + `nvidia-container-toolkit` |
 | **HPC / SLURM** (CINECA G100) | [`docs/install/hpc_slurm.md`](docs/install/hpc_slurm.md) | Singularity + SLURM; targets Tesla V100S 32 GB |
 | **CI / GitHub Actions** | [`docs/install/github_actions.md`](docs/install/github_actions.md) | Ubuntu runner; `jax[cpu]` + `pyopencl` (Intel ICD fallback) |

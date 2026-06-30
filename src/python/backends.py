@@ -382,7 +382,11 @@ def benchmark_backends(
 ) -> list[dict]:
     """Time each backend on theta_body and return a list of result dicts.
 
-    Returns list of dicts: backend, n_frames, n_pts, time_s, fps, speedup_vs_serial.
+    Returns list of dicts: backend, n_frames, time_s, fps, speedup_vs_serial.
+
+    Deduplication: if a requested backend (e.g. jax_cpu) is unavailable and
+    silently falls back to one already measured (e.g. opencl), the duplicate
+    is skipped rather than reported twice.
     """
     if backends is None:
         backends = ["numpy_serial", "numpy_batch", "numpy_mp", "opencl", "jax_cpu"]
@@ -390,6 +394,7 @@ def benchmark_backends(
     n_frames = theta_body.shape[0]
     results: list[dict] = []
     serial_fps: float | None = None
+    seen_classes: set[type] = set()
 
     for name in backends:
         try:
@@ -399,6 +404,11 @@ def benchmark_backends(
                             "time_s": None, "fps": None,
                             "speedup_vs_serial": None, "error": str(e)})
             continue
+
+        # Skip if this backend class already ran under a different requested name
+        if type(b) in seen_classes:
+            continue
+        seen_classes.add(type(b))
 
         try:
             for _ in range(n_warmup):
