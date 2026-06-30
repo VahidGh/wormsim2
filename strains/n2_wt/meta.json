@@ -1,0 +1,40 @@
+{
+  "id": "n2_wt",
+  "strain": "N2",
+  "genotype": "N2 (wild type)",
+  "gene": null,
+  "allele": null,
+  "zenodo_id": "1031837",
+  "zenodo_url": "https://zenodo.org/records/1031837",
+  "description": "C. elegans Bristol N2 wild type. Standard reference strain for locomotion analysis. Crawling on agar 600 s (Schafer Lab, OWMD 2014). 1 tracker-swap flip corrected at t≈431 s.",
+  "phenotype": "Normal locomotion reference",
+  "type": "wild_type",
+  "tags": ["wildtype", "reference"],
+  "metrics": {
+    "bl_mm": 0.664,
+    "path_bl": 82.6,
+    "tuner_var_explained": 0.7821,
+    "tuner_shape_error_bl": 0.022,
+    "fk_shape_error_bl": 0.008,
+    "n_flip_corrections": 1,
+    "n_frames_raw": 17226,
+    "n_frames_anim": 638,
+    "duration_s": 599.3,
+    "n_modes": 4
+  },
+  "outputs": {
+    "animation_html": "images/v1200_n2_tuner_600s.html",
+    "tuner_wcon": "strains/n2_wt/tuner.wcon",
+    "scenario_json": "scenarios/n2_wt.json"
+  },
+  "downloads": [
+    { "label": "🔬 WCON (Zenodo)", "url": "https://zenodo.org/records/1031837", "ext": true },
+    { "label": "💾 Sim WCON",      "url": "strains/n2_wt/tuner.wcon" },
+    { "label": "🗜 VTU 600 s",     "url": "downloads/n2_wt_600s_vtu.zip" },
+    { "label": "🧬 NeuroML2 drive","url": "images/v082_tuner_drive.nml" },
+    { "label": "🧠 NEURON .hoc",   "url": "images/v082_tuner_drive.hoc" },
+    { "label": "📊 Activation CSV","url": "images/v082_activation.csv" }
+  ],
+  "wormsim2_version": "v0.12.1",
+  "generated": "2026-06-29T00:00:00Z"
+}

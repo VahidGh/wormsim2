@@ -1,0 +1,121 @@
+{
+  "id": "n2_wt",
+  "name": "N2 Wild-Type — 900 s Agar Plate",
+  "strain": "N2",
+  "type": "wild_type",
+  "description": "C. elegans N2 WT crawling on agar for 600 s (Schafer Lab, Zenodo 1031837). Left panel: raw WCON skeleton with head/tail flip correction (16.6 s tracking gap at t≈431 s corrected). Right panel: NeuromuscularTuner 4-mode PCA eigenworm reconstruction — mu(s) + Σ aₙ(t)·eₙ(s), n=1..4 (var_explained=0.782, tuner shape error=0.022 BL).",
+  "wcon_source": {
+    "label": "Zenodo 1031837 — Schafer Lab 2014",
+    "url": "https://zenodo.org/records/1031837"
+  },
+  "status": "precomputed",
+  "metrics": {
+    "bl_mm": 0.664,
+    "path_bl": 82.6,
+    "fk_shape_error_bl": 0.008,
+    "tuner_shape_error_bl": 0.022,
+    "tuner_var_explained": 0.7821,
+    "n_modes": 4,
+    "n_frames_raw": 17226,
+    "n_frames_anim": 638,
+    "n_flip_corrections": 1,
+    "duration_s": 599.3
+  },
+  "tuner_params": [
+    {
+      "param": "n_modes",
+      "initial": 4,
+      "tuned": 4,
+      "unit": "",
+      "description": "PCA eigenworm modes used by NeuromuscularTuner"
+    },
+    {
+      "param": "var_explained",
+      "initial": "—",
+      "tuned": 0.7821,
+      "unit": "",
+      "description": "Variance explained by 4-mode PCA over full 600 s (78.2%) — corrected after head/tail flip fix at t≈431s"
+    },
+    {
+      "param": "tuner_shape_err",
+      "initial": "—",
+      "tuned": 0.022,
+      "unit": "BL",
+      "description": "Mean per-frame CoM-aligned RMS shape error between tuner reconstruction and real skeleton"
+    },
+    {
+      "param": "fk_sanity_err",
+      "initial": "—",
+      "tuned": 0.008,
+      "unit": "BL",
+      "description": "FK round-trip error CoM-aligned (sanity check — near-zero by construction)"
+    }
+  ],
+  "perturbation": null,
+  "hardware": {
+    "cpu": "Intel(R) Core(TM) i5-8257U CPU @ 1.40GHz",
+    "cores": 4,
+    "ram_gb": 8.0,
+    "backend": "numpy_mp",
+    "parallelism": "joblib.Parallel — 4 workers, FK batch over frames",
+    "timing": {
+      "load_s": 0.12,
+      "tune_s": 0.041,
+      "render_html_s": 45.2,
+      "total_s": 46.1
+    }
+  },
+  "outputs": {
+    "plotly_html": {
+      "gui_path": "images/v1200_n2_tuner_600s.html",
+      "raw_url": "https://raw.githubusercontent.com/VahidGh/wormsim2/main/docs/images/v1200_n2_tuner_600s.html",
+      "size_kb": 13632
+    }
+  },
+  "downloads": [
+    {
+      "name": "Real WCON recording (47 MB, external)",
+      "description": "Full 600 s N2 WT skeleton — 49 keypoints, plate-frame µm, 25 fps",
+      "size_kb": null,
+      "gui_path": null,
+      "raw_url": null,
+      "external_url": "https://zenodo.org/records/1031837"
+    },
+    {
+      "name": "Skeleton CSV (4 s, 114 frames)",
+      "description": "49-keypoint real N2 skeleton, t=533–537 s (best undulation window)",
+      "size_kb": 105,
+      "gui_path": "images/v080_real_n2_skeleton.csv",
+      "raw_url": "https://raw.githubusercontent.com/VahidGh/wormsim2/main/docs/images/v080_real_n2_skeleton.csv"
+    },
+    {
+      "name": "Activation CSV (24-segment D/V)",
+      "description": "Net dorso-ventral muscle activation per segment; input to fem_body_trace --activation-csv",
+      "size_kb": 26,
+      "gui_path": "images/v082_activation.csv",
+      "raw_url": "https://raw.githubusercontent.com/VahidGh/wormsim2/main/docs/images/v082_activation.csv"
+    },
+    {
+      "name": "NeuroML2 drive (.nml)",
+      "description": "24D + 24V ExplicitList IClamp drive for c302 muscle populations",
+      "size_kb": 282,
+      "gui_path": "images/v082_tuner_drive.nml",
+      "raw_url": "https://raw.githubusercontent.com/VahidGh/wormsim2/main/docs/images/v082_tuner_drive.nml"
+    },
+    {
+      "name": "NEURON .hoc drive",
+      "description": "IClamp Vector.play() drive for NEURON simulator",
+      "size_kb": 142,
+      "gui_path": "images/v082_tuner_drive.hoc",
+      "raw_url": "https://raw.githubusercontent.com/VahidGh/wormsim2/main/docs/images/v082_tuner_drive.hoc"
+    },
+    {
+      "name": "VTK/ParaView — 600 s trajectory (.zip)",
+      "description": "220-frame VTU time-series (PVD + per-frame .vtu). Open in ParaView or PyVista. worm_id=0 real, worm_id=1 FK round-trip.",
+      "size_kb": 397,
+      "gui_path": "downloads/n2_wt_600s_vtu.zip",
+      "raw_url": "https://raw.githubusercontent.com/VahidGh/wormsim2/main/docs/gui/downloads/n2_wt_600s_vtu.zip"
+    }
+  ],
+  "generated": "2026-06-28T18:00:00Z"
+}

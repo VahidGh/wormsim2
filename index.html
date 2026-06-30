@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>wormsim2 — C. elegans Neuromechanical Simulator</title>
+<style>
+:root{
+  --bg:#f5f0e4;--card:#ede6d0;--border:#c9bfa0;--text:#2c2519;--muted:#6b5e42;
+  --blue:#1a3a6b;--red:#7a1810;--green:#2a5c2a;--gold:#8a6800;
+  --ff:system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono","Fira Mono",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--ff);font-size:14px;line-height:1.5;min-height:100vh;display:flex;flex-direction:column}
+a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline}
+
+/* ── header ── */
+header{background:var(--text);color:#f5f0e4;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.hdr-title{font-size:1.05rem;font-weight:600;letter-spacing:.01em}
+.hdr-title em{font-style:normal;color:#c8b87a}
+.hdr-badges{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.badge{display:inline-block;background:#3a4a2a;color:#c8e0a0;font-size:.68rem;padding:2px 7px;border-radius:3px;font-family:var(--mono)}
+.hdr-link{font-size:.78rem;color:#a89870}
+.hdr-link:hover{color:#c8b87a;text-decoration:none}
+
+/* ── search bar ── */
+#search-container{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+#search-wrap{position:relative;flex:1;max-width:620px}
+#search-input{
+  width:100%;padding:9px 14px 9px 38px;border:1.5px solid var(--border);border-radius:6px;
+  font-size:.92rem;font-family:var(--ff);background:#fff;color:var(--text);outline:none;
+  transition:border-color .15s
+}
+#search-input:focus{border-color:var(--blue)}
+.search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:1rem;pointer-events:none}
+#search-dropdown{
+  position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:200;
+  background:#fff;border:1.5px solid var(--blue);border-radius:6px;
+  box-shadow:0 6px 24px rgba(0,0,0,.15);max-height:380px;overflow-y:auto;display:none
+}
+#search-dropdown.open{display:block}
+.dd-section{padding:6px 10px 3px;font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-top:1px solid var(--border)}
+.dd-section:first-child{border-top:none}
+.dd-item{
+  padding:8px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;
+  border-left:3px solid transparent;transition:background .1s
+}
+.dd-item:hover,.dd-item.highlighted{background:var(--card);border-left-color:var(--blue)}
+.dd-item .item-name{font-weight:500;font-size:.88rem}
+.dd-item .item-strain{font-size:.75rem;color:var(--muted);font-family:var(--mono)}
+.dd-item .item-badge{font-size:.65rem;padding:1px 6px;border-radius:8px;color:#fff;flex-shrink:0}
+.badge-wt{background:var(--blue)}.badge-mut{background:var(--red)}.badge-pre{background:var(--green)}
+.dd-loading{padding:14px;text-align:center;color:var(--muted);font-size:.85rem}
+.dd-hint{padding:6px 14px 10px;font-size:.75rem;color:var(--muted)}
+.dd-searching{color:var(--blue);font-style:italic}
+.dd-item .item-name mark{background:rgba(91,146,255,.25);color:inherit;border-radius:2px;padding:0 1px}
+
+#current-strain-pill{
+  display:none;align-items:center;gap:8px;background:var(--text);color:#f5f0e4;
+  padding:5px 12px;border-radius:20px;font-size:.82rem;font-weight:500;white-space:nowrap
+}
+#current-strain-pill .cs-name{font-weight:600}
+#current-strain-pill button{background:none;border:none;color:#a89870;cursor:pointer;font-size:1.1rem;line-height:1;padding:0 0 0 6px}
+#current-strain-pill button:hover{color:#fff}
+
+/* ── strain info bar ── */
+#strain-info-bar{display:none;padding:10px 24px;background:var(--card);border-bottom:1px solid var(--border);align-items:flex-start;gap:16px;flex-wrap:wrap}
+.sib-left{flex:1;min-width:260px}
+.sib-title{font-size:1rem;font-weight:600;margin-bottom:4px}
+.sib-desc{font-size:.8rem;color:var(--muted);max-width:700px}
+.sib-chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:6px}
+.chip{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:3px 9px;font-size:.75rem}
+.chip strong{color:var(--text)}
+.sib-right{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;flex-shrink:0}
+.btn-sm{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:5px;font-size:.8rem;cursor:pointer;border:none;font-family:var(--ff);text-decoration:none;white-space:nowrap}
+.btn-zenodo{background:var(--blue);color:#fff}.btn-zenodo:hover{background:#122b52;color:#fff;text-decoration:none}
+.btn-yt{background:#cc0000;color:#fff}.btn-yt:hover{background:#990000;color:#fff;text-decoration:none}
+
+/* ── animation area ── */
+#animation-area{flex:1;display:flex;flex-direction:column;position:relative;min-height:520px}
+#precomp-frame{display:block;width:100%;height:100%;border:none;flex:1;min-height:520px}
+#plotly-inline{width:100%;flex:1;min-height:520px;display:none}
+#loading-anim{display:none;flex:1;align-items:center;justify-content:center;flex-direction:column;gap:14px;min-height:320px}
+.spinner{width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-label{color:var(--muted);font-size:.9rem}
+.progress-wrap{width:340px;background:#ddd;border-radius:3px;height:5px}
+.progress-fill{background:var(--green);height:5px;border-radius:3px;transition:width .3s;width:0%}
+.log-lines{font-family:var(--mono);font-size:.72rem;color:var(--muted);max-height:120px;overflow-y:auto;width:380px;padding:6px 10px;background:var(--card);border:1px solid var(--border);border-radius:4px}
+
+/* ── YouTube embed ── */
+#yt-section{display:none;background:#1a1a1a;padding:12px 24px}
+#yt-section h3{font-size:.82rem;color:#888;font-weight:500;margin-bottom:8px}
+#yt-frame-wrap{position:relative;padding-bottom:30%;height:0;max-width:520px}
+#yt-frame-wrap iframe{position:absolute;top:0;left:0;width:100%;height:100%}
+
+/* ── metrics + downloads bar ── */
+#info-bar{display:none;background:var(--card);border-top:1px solid var(--border);padding:10px 24px;gap:14px;flex-wrap:wrap;align-items:center}
+.metric-chip{font-size:.78rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:3px 10px}
+.metric-chip .mk{color:var(--muted);margin-right:3px}
+.metric-chip .mv{font-family:var(--mono);color:var(--blue);font-weight:600}
+.dl-sep{width:1px;height:22px;background:var(--border);flex-shrink:0}
+.dl-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:4px;font-size:.78rem;cursor:pointer;border:none;font-family:var(--ff);text-decoration:none;white-space:nowrap}
+.dl-primary{background:var(--text);color:#f5f0e4}.dl-primary:hover{background:#1a1000;color:#f5f0e4;text-decoration:none}
+.dl-secondary{background:var(--card);color:var(--text);border:1px solid var(--border)}.dl-secondary:hover{background:#ddd4b8;text-decoration:none}
+.dl-ext{background:var(--muted);color:#fff}.dl-ext:hover{background:#4a3e2a;color:#fff;text-decoration:none}
+
+/* ── pre-tuned tab ── */
+#strain-tab-bar{display:flex;gap:6px;padding:10px 24px 0;background:var(--bg);border-bottom:1px solid var(--border)}
+.s-tab{padding:7px 16px;border:1px solid var(--border);border-bottom:none;border-radius:6px 6px 0 0;background:transparent;color:var(--muted);cursor:pointer;font-size:.84rem;font-family:var(--ff);transition:background .15s}
+.s-tab.active{background:var(--card);color:var(--text);border-color:var(--border);margin-bottom:-1px;z-index:1;position:relative}
+.s-tab:not(.active):hover{background:var(--card)}
+#panel-pretuned{display:none;padding:14px 24px}
+#pretuned-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+.pt-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.pt-card:hover{border-color:var(--blue);box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.pt-name{font-weight:600;font-size:.9rem;margin-bottom:6px;color:var(--text)}
+.pt-chips{display:flex;gap:5px;flex-wrap:wrap}
+.pt-metrics{font-size:.72rem;color:var(--muted);margin-top:6px;font-family:var(--mono)}
+
+/* ── footer ── */
+footer{background:var(--card);border-top:1px solid var(--border);text-align:center;padding:12px;font-size:.72rem;color:var(--muted)}
+footer a{color:var(--muted)}footer a:hover{color:var(--text)}
+
+@media(max-width:640px){
+  header{padding:10px 14px}
+  #search-container{padding:10px 14px}
+  #strain-info-bar{padding:10px 14px}
+  #info-bar{padding:8px 14px}
+  #precomp-frame,#plotly-inline{min-height:360px}
+}
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header>
+  <div>
+    <div class="hdr-title">wormsim2 — <em>C. elegans</em> Neuromechanical Simulator</div>
+  </div>
+  <div class="hdr-badges">
+    <span class="badge">v0.12</span>
+    <span class="badge">FEM body · 95 BWM</span>
+    <span class="badge">OpenCL · JAX · NumPy-batch</span>
+    <a class="hdr-link" href="https://github.com/VahidGh/wormsim2" target="_blank">↗ github.com/VahidGh/wormsim2</a>
+  </div>
+</header>
+
+<!-- ── Strain tabs ─────────────────────────────────────────────── -->
+<div id="strain-tab-bar">
+  <button class="s-tab active" id="tab-search"   onclick="switchTab('search')">🔍 Search</button>
+  <button class="s-tab"        id="tab-pretuned" onclick="switchTab('pretuned')">✓ Pre-tuned (<span id="pretuned-count">…</span>)</button>
+</div>
+
+<!-- ── Pre-tuned panel ──────────────────────────────────────────── -->
+<div id="panel-pretuned">
+  <div id="pretuned-grid"></div>
+</div>
+
+<!-- ── Strain search ───────────────────────────────────────────── -->
+<div id="search-container">
+  <div id="search-wrap">
+    <span class="search-icon">🔬</span>
+    <input id="search-input" type="text" placeholder="Search C. elegans strain or genotype (e.g. egl-19, unc-31, N2)…"
+           autocomplete="off" spellcheck="false"/>
+    <div id="search-dropdown">
+      <div class="dd-loading" id="dd-loading">Loading Open Worm Movement Database…</div>
+    </div>
+  </div>
+  <div id="current-strain-pill">
+    <span class="cs-name" id="cs-name-text"></span>
+    <button onclick="clearStrain()" title="Clear">×</button>
+  </div>
+</div>
+
+<!-- ── Strain info bar ────────────────────────────────────────── -->
+<div id="strain-info-bar">
+  <div class="sib-left">
+    <div class="sib-title" id="sib-title"></div>
+    <div class="sib-chips" id="sib-chips"></div>
+    <div class="sib-desc" id="sib-desc"></div>
+  </div>
+  <div class="sib-right" id="sib-right"></div>
+</div>
+
+<!-- ── Animation area ─────────────────────────────────────────── -->
+<div id="animation-area">
+  <iframe id="precomp-frame" src="images/v1200_n2_tuner_600s.html" title="C. elegans locomotion simulation"></iframe>
+  <div id="plotly-inline"></div>
+  <div id="loading-anim" style="display:none">
+    <!-- shown only during Pyodide runs; hidden by default since we show precomp -->
+  </div>
+</div>
+
+<!-- ── YouTube embed ──────────────────────────────────────────── -->
+<div id="yt-section">
+  <h3>Video (from Zenodo)</h3>
+  <div id="yt-frame-wrap">
+    <iframe id="yt-frame" frameborder="0" allowfullscreen
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
+  </div>
+</div>
+
+<!-- ── Metrics + downloads bar ───────────────────────────────── -->
+<div id="info-bar">
+  <div id="metrics-chips"></div>
+  <div class="dl-sep"></div>
+  <div id="dl-buttons"></div>
+</div>
+
+
+<footer>
+  wormsim2 v0.12 · MIT ·
+  <a href="https://github.com/VahidGh/wormsim2" target="_blank">GitHub</a> ·
+  Data: <a href="https://zenodo.org/communities/open-worm-movement-database" target="_blank">Open Worm Movement Database (Zenodo)</a> ·
+  <a href="https://zenodo.org/records/1031837" target="_blank">Zenodo 1031837</a> (Schafer Lab N2) ·
+  Generated 2026-06-28
+</footer>
+
+<!-- ── Plotly.js (lazy) ─────────────────────────────────────────── -->
+<script>
+// ────────────────────────────────────────────────────────────────────
+// 1.  Strain state — populated dynamically from files
+// ────────────────────────────────────────────────────────────────────
+let tunedStrains   = [];  // locally tuned: strains/index.json + each meta.json
+let owmdStrains    = [];  // live Zenodo API results
+let allStrains     = [];  // merged (tuned > owmd)
+let currentStrain  = null;
+let pyodide = null, pyodideReady = false, pyodideLoading = false;
+
+// ────────────────────────────────────────────────────────────────────
+// 2.  Strain discovery
+// ────────────────────────────────────────────────────────────────────
+async function loadCatalog() {
+  await discoverStrains();
+  rebuildAllStrains();
+  buildDropdown('');
+  fetchOWMD();
+}
+
+async function discoverStrains() {
+  try {
+    const r = await fetch('strains/index.json');
+    if (!r.ok) return;
+    const idx = await r.json();
+    const metas = await Promise.all(
+      (idx.strains ?? []).map(async entry => {
+        try {
+          const mr = await fetch(`strains/${entry.id}/meta.json`);
+          if (!mr.ok) return null;
+          const m = await mr.json();
+          return {
+            ...m,
+            name: m.genotype ?? m.strain,
+            html: m.outputs?.animation_html ?? null,
+            scenario: m.outputs?.scenario_json ?? null,
+            zenodo_url: m.zenodo_id ? `https://zenodo.org/records/${m.zenodo_id}` : null,
+            _tuned: true, _catalog: false,
+            _version: m.wormsim2_version ?? '',
+            _date: (m.generated ?? entry.date ?? '').slice(0, 10),
+          };
+        } catch (_) { return null; }
+      })
+    );
+    tunedStrains = metas.filter(Boolean);
+    renderPretuned();
+  } catch (_) {}
+}
+
+function rebuildAllStrains() {
+  const tunedIds  = new Set(tunedStrains.map(s => s.id));
+  const tunedZids = new Set(tunedStrains.map(s => s.zenodo_id).filter(Boolean));
+  const owmdFilt  = owmdStrains.filter(s =>
+    !tunedIds.has(s.id) && !tunedZids.has(s.zenodo_id));
+  allStrains = [...tunedStrains, ...owmdFilt];
+}
+
+async function fetchOWMD() {
+  const apis = [
+    'https://zenodo.org/api/communities/open-worm-movement-database/records?size=100&sort=mostrecent',
+    'https://zenodo.org/api/records?communities=open-worm-movement-database&size=100&sort=bestmatch',
+  ];
+  for (const url of apis) {
+    try {
+      const r = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!r.ok) continue;
+      const data = await r.json();
+      const hits = data.hits?.hits ?? data.hits ?? [];
+      owmdStrains = hits
+        .map(h => {
+          const meta = h.metadata ?? h;
+          const title = meta.title ?? '';
+          const kw = (meta.keywords ?? []).find(k =>
+            /^[a-z]{2,5}-\d|N2|CB\d|DA\d|PS\d/i.test(k));
+          const strain = kw ?? parseStrainFromTitle(title);
+          if (!strain) return null;
+          const zid = String(h.id ?? h.doi?.split('.').pop() ?? '');
+          const ri = meta.related_identifiers ?? [];
+          const yt = ri.find(x => /youtube\.com|youtu\.be/.test(x.identifier ?? ''));
+          const files = h.files ?? [];
+          const wconFile = files.find(f => /\.wcon(\.zip|\.gz)?$/.test(f.key ?? ''));
+          return {
+            id: `owmd_${zid}`,
+            name: strain,
+            strain,
+            type: /N2|wild.?type|WT/i.test(title) ? 'wild_type' : 'mutant',
+            zenodo_id: zid,
+            zenodo_url: `https://zenodo.org/records/${zid}`,
+            html: null,
+            description: (function(d){ const s=stripHtml(d||''); return s.startsWith('This experiment is part of')?'':s; })(meta.description),
+            wcon_download_url: wconFile ? (wconFile.links?.self ?? wconFile.links?.download) : null,
+            youtube_url: yt ? toYoutubeEmbed(yt.identifier) : null,
+            downloads: [{ label: '🔬 WCON (Zenodo)', url: `https://zenodo.org/records/${zid}`, ext: true }],
+            _tuned: false, _catalog: false,
+          };
+        })
+        .filter(Boolean);
+      rebuildAllStrains();
+      break;
+    } catch (_) { /* try next */ }
+  }
+  buildDropdown('');
+}
+
+function parseStrainFromTitle(title) {
+  // Match "N2", gene allele like "egl-19(n2368)", "unc-31(e169)", "daf-16(mu86)"
+  const m = title.match(/([a-z]{2,5}-\d+\([a-z0-9]+\)|N2|CB\d+|PS\d+|\bWT\b)/i);
+  return m ? m[0] : null;
+}
+function stripHtml(s) { return s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); }
+function linkifyText(s) {
+  if (!s) return '';
+  const esc = s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return esc.replace(/https?:\/\/[^\s<>"]+/g,
+    u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+}
+function toYoutubeEmbed(url) {
+  const m = url.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  return m ? `https://www.youtube.com/embed/${m[1]}` : null;
+}
+
+// ────────────────────────────────────────────────────────────────────
+// 3.  Dropdown UI + live Zenodo search
+// ────────────────────────────────────────────────────────────────────
+const $si  = document.getElementById('search-input');
+const $dd  = document.getElementById('search-dropdown');
+const $ddl = document.getElementById('dd-loading');
+let ddIdx  = -1;
+let _searchAbort = null;   // AbortController for in-flight Zenodo request
+let _searchTimer = null;   // debounce timer
+
+// Map zenodo_id → strain object for session cache (persists across queries)
+const _liveCache = new Map();
+
+function buildDropdown(q, { searching = false } = {}) {
+  const lq = q.toLowerCase();
+  const matches = s =>
+    !q || (s.name ?? '').toLowerCase().includes(lq) ||
+    (s.strain ?? '').toLowerCase().includes(lq) ||
+    (s.gene ?? '').toLowerCase().includes(lq) ||
+    (s.description ?? '').toLowerCase().includes(lq) ||
+    (s.phenotype ?? '').toLowerCase().includes(lq) ||
+    (s.tags ?? []).some(t => t.toLowerCase().includes(lq));
+
+  const tunedIds  = new Set(tunedStrains.map(s => s.id));
+  const tunedZids = new Set(tunedStrains.map(s => s.zenodo_id).filter(Boolean));
+
+  const tuned = tunedStrains.filter(matches);
+
+  // Live results: union of owmdStrains (background fetch) + _liveCache (query search)
+  const livePool = [
+    ...owmdStrains,
+    ...[..._liveCache.values()].filter(s => !owmdStrains.some(o => o.zenodo_id === s.zenodo_id)),
+  ];
+  const live = livePool.filter(s =>
+    !tunedIds.has(s.id) && !tunedZids.has(s.zenodo_id) && matches(s));
+
+  let html = '';
+  if (tuned.length) {
+    html += `<div class="dd-section">✓ Pre-tuned (instant)</div>`;
+    html += tuned.map(s => ddItem(s, 'tuned')).join('');
+  }
+  if (live.length) {
+    html += `<div class="dd-section">○ OWMD — load &amp; tune via Pyodide</div>`;
+    html += live.slice(0, 20).map(s => ddItem(s, 'owmd')).join('');
+  }
+  if (!tuned.length && !cat.length && !live.length && !searching) {
+    html += `<div class="dd-hint">${q ? 'No matches — try a gene name, allele, or phenotype keyword' : 'Start typing to search strains…'}</div>`;
+  }
+  if (searching) {
+    html += `<div class="dd-hint dd-searching">⏳ Searching Zenodo for <em>${q}</em>…</div>`;
+  }
+  html += `<div class="dd-hint">Powered by <a href="https://zenodo.org/communities/open-worm-movement-database" target="_blank">OWMD</a></div>`;
+
+  $ddl.style.display = 'none';
+  $dd.innerHTML = html + $ddl.outerHTML;
+  document.getElementById('dd-loading').style.display = 'none';
+  $dd.querySelectorAll('.dd-item').forEach(el => {
+    el.addEventListener('mousedown', e => { e.preventDefault(); selectStrain(el.dataset.id); });
+  });
+  ddIdx = -1;
+}
+
+function ddItem(s, kind) {
+  let badge = '';
+  if (kind === 'tuned') {
+    const ver = s._version ? ` · ${s._version}` : '';
+    badge = `<span class="item-badge badge-pre">✓ tuned${ver}</span>`;
+  } else if (kind === 'catalog') {
+    badge = `<span class="item-badge badge-mut">○ catalog</span>`;
+  } else {
+    badge = `<span class="item-badge ${s.type==='wild_type'?'badge-wt':'badge-mut'}">○ ${s.type==='wild_type'?'WT':'KO/LOF'}</span>`;
+  }
+  const zid = s.zenodo_id ? ` · Zenodo ${s.zenodo_id}` : '';
+  // Highlight matching substring in name
+  const q   = $si.value.trim();
+  const name = s.name ?? s.strain ?? '';
+  const nameHl = q ? name.replace(
+    new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'),
+    '<mark>$1</mark>'
+  ) : name;
+  return `<div class="dd-item" data-id="${s.id}">
+    <div style="flex:1">
+      <div class="item-name">${nameHl}</div>
+      <div class="item-strain">${s.strain ?? ''}${zid}</div>
+    </div>${badge}</div>`;
+}
+
+// ── Live Zenodo query (debounced, cancelable) ─────────────────────────────
+async function searchZenodo(q) {
+  // Cancel any pending request
+  if (_searchAbort) { _searchAbort.abort(); _searchAbort = null; }
+  if (!q || q.length < 2) return;
+
+  _searchAbort = new AbortController();
+  const signal = _searchAbort.signal;
+  const url = `https://zenodo.org/api/records?q=${encodeURIComponent(q)}`
+            + `&communities=open-worm-movement-database&size=10&sort=bestmatch`;
+  try {
+    const r = await fetch(url, { headers: { Accept: 'application/json' }, signal });
+    if (!r.ok || signal.aborted) return;
+    const data = await r.json();
+    const hits = data.hits?.hits ?? [];
+    for (const h of hits) {
+      const meta   = h.metadata ?? h;
+      const title  = meta.title ?? '';
+      const kw     = (meta.keywords ?? []).find(k => /^[a-z]{2,5}-\d|N2|CB\d|DA\d|PS\d/i.test(k));
+      const strain = kw ?? parseStrainFromTitle(title);
+      if (!strain) continue;
+      const zid    = String(h.id ?? h.doi?.split('.').pop() ?? '');
+      if (_liveCache.has(zid)) continue;   // already cached
+      const files   = h.files ?? [];
+      const wconF   = files.find(f => /\.wcon(\.zip|\.gz)?$/.test(f.key ?? ''));
+      const ri      = meta.related_identifiers ?? [];
+      const yt      = ri.find(x => /youtube\.com|youtu\.be/.test(x.identifier ?? ''));
+      _liveCache.set(zid, {
+        id:              `owmd_${zid}`,
+        name:            strain,
+        strain,
+        type:            /N2|wild.?type|WT/i.test(title) ? 'wild_type' : 'mutant',
+        zenodo_id:       zid,
+        zenodo_url:      `https://zenodo.org/records/${zid}`,
+        html:            null,
+        description:     (function(d){ const s=stripHtml(d||''); return s.startsWith('This experiment is part of')?'':s; })(meta.description),
+        wcon_download_url: wconF ? (wconF.links?.self ?? wconF.links?.download) : null,
+        youtube_url:     yt ? toYoutubeEmbed(yt.identifier) : null,
+        downloads:       [{ label: '🔬 WCON (Zenodo)', url: `https://zenodo.org/records/${zid}`, ext: true }],
+        _tuned: false, _catalog: false, _live: true,
+      });
+    }
+    if (!signal.aborted) buildDropdown($si.value);
+  } catch (e) {
+    if (e.name !== 'AbortError') console.warn('[searchZenodo]', e);
+  }
+}
+
+$si.addEventListener('focus', () => { buildDropdown($si.value); $dd.classList.add('open'); });
+$si.addEventListener('blur',  () => setTimeout(() => $dd.classList.remove('open'), 180));
+$si.addEventListener('input', () => {
+  const q = $si.value.trim();
+  $dd.classList.add('open');
+  ddIdx = -1;
+  clearTimeout(_searchTimer);
+  if (q.length >= 2) {
+    // Render immediately with local matches + "searching" indicator
+    buildDropdown(q, { searching: true });
+    // Debounce the Zenodo API call by 380 ms
+    _searchTimer = setTimeout(() => searchZenodo(q), 380);
+  } else {
+    if (_searchAbort) { _searchAbort.abort(); _searchAbort = null; }
+    buildDropdown(q);
+  }
+});
+$si.addEventListener('keydown', e => {
+  const items = [...$dd.querySelectorAll('.dd-item')];
+  if (e.key === 'ArrowDown') { e.preventDefault(); ddIdx=Math.min(ddIdx+1,items.length-1); highlight(items); }
+  if (e.key === 'ArrowUp')   { e.preventDefault(); ddIdx=Math.max(ddIdx-1,0); highlight(items); }
+  if (e.key === 'Enter' && ddIdx >= 0) { e.preventDefault(); selectStrain(items[ddIdx].dataset.id); }
+  if (e.key === 'Escape') $dd.classList.remove('open');
+});
+function highlight(items) {
+  items.forEach((el,i) => el.classList.toggle('highlighted', i===ddIdx));
+  items[ddIdx]?.scrollIntoView({ block:'nearest' });
+}
+
+// ────────────────────────────────────────────────────────────────────
+// 4.  Strain selection
+// ────────────────────────────────────────────────────────────────────
+function selectStrain(id) {
+  const s = allStrains.find(x => x.id === id)
+         ?? [..._liveCache.values()].find(x => x.id === id);
+  if (!s) return;
+  $dd.classList.remove('open');
+  $si.value = '';
+  currentStrain = s;
+
+  // pill
+  document.getElementById('cs-name-text').textContent = s.strain;
+  document.getElementById('current-strain-pill').style.display = 'flex';
+
+  // strain info bar
+  document.getElementById('sib-title').textContent = s.name ?? s.strain;
+  document.getElementById('sib-desc').innerHTML = linkifyText(s.description ?? s.phenotype ?? '');
+  const typeLabel = s.type === 'wild_type' ? 'Wild type' : 'Mutant';
+  let chipsHtml = `<span class="chip"><strong>${typeLabel}</strong></span>`;
+  if (s.zenodo_id) chipsHtml += `<span class="chip">Zenodo <strong>${s.zenodo_id}</strong></span>`;
+  if (s._tuned) {
+    const ver = s._version ? ` ${s._version}` : '';
+    chipsHtml += `<span class="chip" style="background:var(--green,#2d6a4f);color:#fff">✓ tuned${ver}</span>`;
+  }
+  document.getElementById('sib-chips').innerHTML = chipsHtml;
+
+  // Zenodo + YouTube buttons
+  let btnHtml = s.zenodo_url
+    ? `<a class="btn-sm btn-zenodo" href="${s.zenodo_url}" target="_blank">↗ Zenodo ${s.zenodo_id}</a>`
+    : '';
+  if (s.youtube_url) {
+    btnHtml += `<button class="btn-sm btn-yt" onclick="showYouTube('${s.youtube_url}')">▶ Video</button>`;
+  }
+  document.getElementById('sib-right').innerHTML = btnHtml;
+  document.getElementById('strain-info-bar').style.display = 'flex';
+
+  // animation: use pre-tuned animation if available, else show placeholder
+  if (s._tuned && s.html) {
+    showPrecomputed(s);
+  } else {
+    const la = document.getElementById('loading-anim');
+    document.getElementById('precomp-frame').style.display = 'none';
+    la.style.display = 'flex';
+    la.innerHTML = `<div style="padding:28px 24px;text-align:center;color:var(--muted)">
+      <p style="font-size:1.1rem;font-weight:600;color:var(--text);margin-bottom:10px">🔧 Online tuner — under construction</p>
+      <p style="font-size:.85rem">In-browser Pyodide tuning is being rebuilt.<br>
+      Use the <strong>✓ Pre-tuned</strong> tab for instant animations,<br>
+      or download the WCON below and run the pipeline locally.</p>
+    </div>`;
+  }
+}
+
+function clearStrain() {
+  currentStrain = null;
+  document.getElementById('current-strain-pill').style.display = 'none';
+  document.getElementById('strain-info-bar').style.display = 'none';
+  document.getElementById('yt-section').style.display = 'none';
+  document.getElementById('info-bar').style.display = 'none';
+  // restore N2 default
+  showFrame('images/v1200_n2_tuner_600s.html');
+}
+
+// ────────────────────────────────────────────────────────────────────
+// 5.  Pre-computed strain loader
+// ────────────────────────────────────────────────────────────────────
+async function showPrecomputed(s) {
+  const animSrc = s.html ?? s.outputs?.animation_html;
+  if (animSrc) showFrame(animSrc);
+  // Enrich metrics from scenario JSON if available (backwards-compat)
+  if (s.scenario) {
+    try {
+      const r = await fetch(s.scenario);
+      if (r.ok) {
+        const d = await r.json();
+        if (d.metrics) s.metrics = { ...s.metrics, ...d.metrics };
+      }
+    } catch (_) {}
+  }
+  renderInfoBar(s);
+}
+
+function showFrame(src) {
+  document.getElementById('precomp-frame').src = src;
+  document.getElementById('precomp-frame').style.display = 'block';
+  document.getElementById('plotly-inline').style.display = 'none';
+  document.getElementById('loading-anim').style.display  = 'none';
+}
+
+// ────────────────────────────────────────────────────────────────────
+// 6.  Metrics + downloads bar
+// ────────────────────────────────────────────────────────────────────
+function renderInfoBar(s) {
+  const m = s.metrics ?? {};
+  const chips = [
+    m.bl_mm       != null ? `<span class="metric-chip"><span class="mk">BL</span><span class="mv">${m.bl_mm} mm</span></span>` : '',
+    m.path_bl     != null ? `<span class="metric-chip"><span class="mk">path</span><span class="mv">${m.path_bl} BL</span></span>` : '',
+    m.var_exp     != null ? `<span class="metric-chip"><span class="mk">var_exp</span><span class="mv">${(m.var_exp*100).toFixed(1)}%</span></span>` : '',
+    m.tuner_err_bl!= null ? `<span class="metric-chip"><span class="mk">tuner_err</span><span class="mv">${m.tuner_err_bl} BL</span></span>` : '',
+    m.fk_shape_err_bl != null ? `<span class="metric-chip"><span class="mk">FK_err</span><span class="mv">${m.fk_shape_err_bl} BL</span></span>` : '',
+    m.n_frames_raw!= null ? `<span class="metric-chip"><span class="mk">frames</span><span class="mv">${m.n_frames_raw}</span></span>` : '',
+    m.duration_s  != null ? `<span class="metric-chip"><span class="mk">duration</span><span class="mv">${m.duration_s} s</span></span>` : '',
+  ].filter(Boolean).join('');
+  document.getElementById('metrics-chips').innerHTML = chips;
+
+  const dlBtns = (s.downloads ?? []).map(d =>
+    d.ext
+      ? `<a class="dl-btn dl-ext" href="${d.url}" target="_blank">${d.label}</a>`
+      : `<a class="dl-btn dl-secondary" href="${d.url}" download="${d.download ?? ''}">${d.label}</a>`
+  ).join('');
+  document.getElementById('dl-buttons').innerHTML = dlBtns;
+
+  document.getElementById('info-bar').style.display = 'flex';
+}
+
+// ────────────────────────────────────────────────────────────────────
+// 7.  YouTube embed
+// ────────────────────────────────────────────────────────────────────
+function showYouTube(embedUrl) {
+  document.getElementById('yt-frame').src = embedUrl;
+  document.getElementById('yt-section').style.display = 'block';
+  document.getElementById('yt-section').scrollIntoView({ behavior: 'smooth' });
+}
+
+// ────────────────────────────────────────────────────────────────────
+// 8.  Pyodide 4-mode PCA tuner (for OWMD strains without pre-computed HTML)
+// ────────────────────────────────────────────────────────────────────
+async function runPyodideTuner(s) {
+  // Switch to loading UI
+  document.getElementById('precomp-frame').style.display  = 'none';
+  document.getElementById('plotly-inline').style.display  = 'none';
+  const la = document.getElementById('loading-anim');
+  la.style.display = 'flex';
+  la.innerHTML = `
+    <div class="spinner"></div>
+    <div class="loading-label" id="load-label">Initialising…</div>
+    <div class="progress-wrap"><div class="progress-fill" id="load-progress"></div></div>
+    <div class="log-lines" id="load-log"></div>`;
+  const setLabel = t => { const el = document.getElementById('load-label'); if(el) el.textContent = t; };
+  const setProgress = p => { const el = document.getElementById('load-progress'); if(el) el.style.width = p+'%'; };
+  const logLine = m => {
+    const el = document.getElementById('load-log');
+    if(el){ el.innerHTML += m + '\n'; el.scrollTop = el.scrollHeight; }
+  };
+
+  // Load Pyodide
+  if (!pyodideReady && !pyodideLoading) {
+    pyodideLoading = true;
+    setLabel('Loading Pyodide (Python/WASM) — first load ~8 s…'); setProgress(10);
+    try {
+      await loadScript('https://cdn.jsdelivr.net/pyodide/v0.27.5/full/pyodide.js');
+      pyodide = await loadPyodide();
+      setLabel('Loading NumPy + micropip…'); setProgress(12);
+      await pyodide.loadPackage(['numpy', 'micropip']);
+      setLabel('Loading Plotly (first load ~5 s)…'); setProgress(18);
+      await pyodide.runPythonAsync("import micropip; await micropip.install('plotly')");
+      pyodideReady = true; pyodideLoading = false;
+    } catch (e) {
+      la.innerHTML = `<div style="color:var(--red);padding:20px">Pyodide failed to load: ${e.message}.</div>`;
+      return;
+    }
+  } else if (pyodideLoading) {
+    // poll
+    await new Promise(res => { const t = setInterval(() => { if(!pyodideLoading){clearInterval(t);res();} }, 300); });
+  }
+
+  // Fetch WCON from Zenodo — try direct URL first, then resolve via Zenodo API
+  let wconText = null;
+
+  // Step 1: try direct download URL if known
+  if (s.wcon_download_url) {
+    setLabel(`Fetching WCON from Zenodo ${s.zenodo_id}…`); setProgress(20);
+    logLine(`[1/6] Downloading WCON (direct URL)…`);
+    try {
+      wconText = await fetchWcon(s.wcon_download_url, setProgress, logLine, 20, 45);
+    } catch(e) {
+      logLine(`Direct fetch failed (${e.message}), trying Zenodo API…`);
+    }
+  }
+
+  // Step 2: if no direct URL or direct fetch returned empty, resolve via Zenodo record API
+  if ((!wconText || !wconText.trim()) && s.zenodo_id) {
+    setLabel(`Resolving WCON from Zenodo ${s.zenodo_id}…`); setProgress(22);
+    try {
+      wconText = await resolveZenodoWcon(s.zenodo_id, setProgress, logLine);
+    } catch(e) {
+      logLine(`✗ ${e.message}`);
+      // Propagate file-specific download info for better fallback UI
+      if (e._fileKey)   s._fallback_key = e._fileKey;
+      if (e._directUrl) s._fallback_url = e._directUrl;
+    }
+  }
+
+  // Validate before handing to Python
+  if (!wconText || !wconText.trim()) {
+    showWconFallback(la, s);
+    return;
+  }
+  const firstChar = wconText.trimStart()[0];
+  if (firstChar !== '{' && firstChar !== '[') {
+    logLine(`Unexpected content type (got: ${wconText.slice(0,60).replace(/\n/g,' ')}…)`);
+    showWconFallback(la, s);
+    return;
+  }
+
+  // Run tuner
+  await runTuner(wconText, s.strain || s.name, setLabel, setProgress, logLine, s);
+}
+
+function showWconFallback(la, s) {
+  const recordUrl = s.zenodo_url
+    ?? (s.zenodo_id ? `https://zenodo.org/records/${s.zenodo_id}` : null)
+    ?? 'https://zenodo.org/communities/open-worm-movement-database';
+  const fileLink = s._fallback_url
+    ? `<p style="margin-top:10px">
+        <a class="btn-sm btn-zenodo" href="${s._fallback_url}" target="_blank"
+           download="${s._fallback_key ?? ''}">
+          ⬇ Download ${s._fallback_key ?? 'WCON file'} directly
+        </a>
+       </p>`
+    : `<p style="margin-top:10px">
+        <a class="btn-sm btn-zenodo" href="${recordUrl}" target="_blank">
+          ↗ Open Zenodo record${s.zenodo_id ? ' '+s.zenodo_id : ''}
+        </a>
+       </p>`;
+  la.style.display = 'flex';
+  la.innerHTML = `
+    <div style="padding:20px 24px;text-align:center;color:var(--muted)">
+      <p><strong>Zenodo CDN is CORS-restricted</strong> — browser fetch is blocked.</p>
+      <p style="margin-top:6px;font-size:.82rem">Download the WCON file below, then use the GitHub Actions tuner to process it server-side.</p>
+      ${fileLink}
+    </div>`;
+}
+
+async function resolveZenodoWcon(zenodo_id, setProgress, logLine) {
+  logLine(`[API] Fetching record ${zenodo_id}…`);
+  const r = await fetch(`https://zenodo.org/api/records/${zenodo_id}`,
+                        { headers: { Accept: 'application/json' } });
+  if (!r.ok) throw new Error(`Zenodo API: HTTP ${r.status}`);
+  const rec = await r.json();
+
+  // Collect files (new API: rec.files[], old/large: need rec.links.files endpoint)
+  let files = Array.isArray(rec.files) ? rec.files : [];
+  if (!files.length && rec.links?.files) {
+    logLine(`[API] Fetching file list…`);
+    const fr = await fetch(rec.links.files, { headers: { Accept: 'application/json' } });
+    if (fr.ok) {
+      const fd = await fr.json();
+      files = fd.entries ?? (Array.isArray(fd) ? fd : []);
+    }
+  }
+
+  const wconFile = files.find(f =>
+    /\.wcon(\.zip|\.gz)?$/i.test(f.key ?? f.filename ?? f.name ?? ''));
+
+  if (!wconFile) {
+    const listed = files.map(f => f.key ?? f.filename ?? '?').slice(0, 6).join(', ');
+    throw new Error(`No WCON file in record (has: ${listed || 'none'})`);
+  }
+
+  const key = wconFile.key ?? wconFile.filename ?? wconFile.name;
+
+  // Build canonical content URL
+  // New API: links.content is direct, or links.self + '/content'
+  // Old API: links.self IS the S3 URL (contains /api/files/) = direct content
+  const contentUrl =
+    wconFile.links?.content
+    ?? (wconFile.links?.self?.includes('/api/files/')
+          ? wconFile.links.self
+          : wconFile.links?.self
+              ? wconFile.links.self + '/content'
+              : null)
+    ?? `https://zenodo.org/api/records/${zenodo_id}/files/${encodeURIComponent(key)}/content`;
+
+  logLine(`[1/6] WCON: ${key}`);
+
+  // Zenodo CDN redirects strip CORS headers — try multiple strategies
+  const attempts = [
+    { label: 'direct',      url: contentUrl },
+    { label: 'corsproxy',   url: `https://corsproxy.io/?url=${encodeURIComponent(contentUrl)}` },
+    { label: 'allorigins',  url: `https://api.allorigins.win/raw?url=${encodeURIComponent(contentUrl)}` },
+  ];
+
+  for (const { label, url } of attempts) {
+    try {
+      logLine(`  ↳ ${label}…`);
+      const text = await fetchWcon(url, setProgress, logLine, 25, 55);
+      if (text?.trim() && '{['.includes(text.trim()[0])) {
+        logLine(`  ✓ ${label} OK`);
+        return text;
+      }
+    } catch(e) {
+      logLine(`  ✗ ${label}: ${e.message}`);
+    }
+  }
+
+  // All proxies failed — attach direct-download info for a better fallback UI
+  const directDownloadUrl =
+    `https://zenodo.org/records/${zenodo_id}/files/${encodeURIComponent(key)}?download=1`;
+  const err = new Error(`CORS: all strategies failed — download manually`);
+  err._fileKey = key;
+  err._directUrl = directDownloadUrl;
+  throw err;
+}
+
+async function fetchWcon(url, setProgress, logLine, p0, p1) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const ct = r.headers.get('content-type') ?? '';
+  const total = parseInt(r.headers.get('content-length') ?? '0');
+  const reader = r.body.getReader();
+  const chunks = [];
+  let received = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    if (total) setProgress(p0 + (p1-p0) * received/total);
+  }
+  if (!received) throw new Error('Empty response body (CORS block or redirect)');
+  const blob = new Blob(chunks);
+
+  // Detect format by magic bytes — reliable even through proxy services
+  const hdr = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+  const isZip  = hdr[0] === 0x50 && hdr[1] === 0x4B;           // PK..
+  const isGzip = hdr[0] === 0x1F && hdr[1] === 0x8B;           // gzip magic
+  const hintZip  = url.includes('.zip') || ct.includes('zip');
+  const hintGzip = url.includes('.gz')  || ct.includes('gzip');
+
+  if (isZip || hintZip) {
+    logLine(`[fetch] Unzipping ${(received/1048576).toFixed(1)} MB…`);
+    return unzipWcon(blob);
+  }
+  if (isGzip || hintGzip) {
+    logLine(`[fetch] Gunzipping ${(received/1048576).toFixed(1)} MB…`);
+    const ds = new DecompressionStream('gzip');
+    const decompressed = await new Response(blob.stream().pipeThrough(ds)).blob();
+    return decompressed.text();
+  }
+  const text = await blob.text();
+  if (!text.trim()) throw new Error('Empty WCON content after decoding');
+  return text;
+}
+
+async function unzipWcon(blob) {
+  // Use DecompressionStream for .wcon.gz, or dynamic import JSZip for .zip
+  if (!window.JSZip) {
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+  }
+  const ab = await blob.arrayBuffer();
+  const zip = await JSZip.loadAsync(ab);
+  const names = Object.keys(zip.files).filter(n => n.endsWith('.wcon') || n.endsWith('.json'));
+  if (!names.length) throw new Error('No .wcon file found in ZIP');
+  return zip.files[names[0]].async('string');
+}
+
+async function runTuner(wconText, label, setLabel, setProgress, logLine, s) {
+  const la = document.getElementById('loading-anim');
+  setLabel('Running 4-mode PCA tuner…'); setProgress(48);
+
+  pyodide.globals.set('wcon_text',   wconText);
+  pyodide.globals.set('wcon_label',  label);
+  pyodide.globals.set('_logLine',    logLine);
+  pyodide.globals.set('_setProgress', setProgress);
+
+  const pyCode = `
+import json as J, numpy as np, sys
+
+def _log(m): _logLine(m)
+def _prog(p): _setProgress(p)
+
+try:
+    raw = J.loads(wcon_text)
+except Exception as _je:
+    preview = (wcon_text or '')[:120].replace('\\n', ' ')
+    raise ValueError(
+        f"WCON JSON parse error: {_je}\\n"
+        f"Content preview: {preview!r}"
+    ) from None
+w   = raw['data'][0]
+t_all = w['t']; x_all = w['x']; y_all = w['y']
+valid = [i for i in range(len(t_all))
+         if x_all[i] is not None and y_all[i] is not None
+         and not any(v is None for v in x_all[i])]
+t_f = np.array([t_all[i] for i in valid])
+x_f = np.array([[float(v) for v in x_all[i]] for i in valid])
+y_f = np.array([[float(v) for v in y_all[i]] for i in valid])
+if x_f.max() > 50: x_f /= 1000.0; y_f /= 1000.0
+_log(f'[1/6] Valid: {len(valid)} frames  t={t_f[0]:.1f}-{t_f[-1]:.1f} s')
+_prog(52)
+
+def _mdir(xf, yf):
+    dx = np.diff(xf, axis=1); dy = np.diff(yf, axis=1)
+    th = np.arctan2(dy, dx)
+    return float(np.angle(np.exp(1j*th).mean()))
+n_flips = 0
+for g in np.where(np.diff(t_f) > 5.0)[0]:
+    w_n = min(10, g+1, len(t_f)-g-1)
+    if w_n < 1: continue
+    db = _mdir(x_f[max(0,g-w_n):g+1], y_f[max(0,g-w_n):g+1])
+    da = _mdir(x_f[g+1:g+1+w_n],      y_f[g+1:g+1+w_n])
+    diff = float(np.angle(np.exp(1j*(da-db))))
+    if abs(diff) > np.pi/2:
+        x_f[g+1:] = x_f[g+1:, ::-1]; y_f[g+1:] = y_f[g+1:, ::-1]; n_flips += 1
+_log(f'[2/6] Flip corrections: {n_flips}')
+_prog(56)
+
+segs = np.sqrt(np.diff(x_f,axis=1)**2+np.diff(y_f,axis=1)**2)
+bl_mm = float(segs.sum(axis=1).mean())
+cx_pl = x_f.mean(axis=1); cy_pl = y_f.mean(axis=1)
+x_sh = (x_f - cx_pl[:,None]) / bl_mm
+y_sh = (y_f - cy_pl[:,None]) / bl_mm
+cx_bl = (cx_pl - cx_pl[0]) / bl_mm
+cy_bl = (cy_pl - cy_pl[0]) / bl_mm
+path_bl = float(np.sqrt(np.diff(cx_bl)**2+np.diff(cy_bl)**2).sum())
+_log(f'[3/6] bl={bl_mm:.4f} mm  path={path_bl:.1f} BL')
+_prog(62)
+
+dx_all = np.diff(x_sh, axis=1); dy_all = np.diff(y_sh, axis=1)
+theta_all = np.arctan2(dy_all, dx_all)
+mu = theta_all.mean(axis=0)
+theta_c = theta_all - mu
+U, S, Vt = np.linalg.svd(theta_c, full_matrices=False)
+modes = Vt[:4]
+coeffs_all = theta_c @ modes.T
+var_exp = float((S[:4]**2).sum() / (S**2).sum())
+_log(f'[4/6] PCA 4 modes  var_exp={var_exp:.4f}')
+_prog(70)
+
+SUB = max(1, len(valid)//120)
+idx_s = np.arange(0, len(valid), SUB)
+N_FR = len(idx_s)
+t_s = t_f[idx_s]; x_sh_s = x_sh[idx_s]; y_sh_s = y_sh[idx_s]
+cx_s = cx_bl[idx_s]; cy_s = cy_bl[idx_s]
+theta_rec = (mu + coeffs_all[idx_s] @ modes).astype(np.float32)
+n_pts = x_sh_s.shape[1]; n_seg = n_pts-1; ds = 1.0/n_seg; MID = n_pts//2
+th_r = theta_rec - np.float32(np.pi/2)
+sx = ds*np.cos(th_r); sy = ds*np.sin(th_r)
+cx_ = np.concatenate([np.zeros((N_FR,1)),np.cumsum(sx,axis=1)],axis=1)
+cy_ = np.concatenate([np.zeros((N_FR,1)),np.cumsum(sy,axis=1)],axis=1)
+x_sc = cx_-cx_[:,MID:MID+1]; y_sc = cy_-cy_[:,MID:MID+1]
+x_sc_c = x_sc-x_sc.mean(axis=1,keepdims=True); y_sc_c = y_sc-y_sc.mean(axis=1,keepdims=True)
+tuner_err = float(np.sqrt((x_sc_c-x_sh_s)**2+(y_sc_c-y_sh_s)**2).mean())
+_log(f'[5/6] tuner_err={tuner_err:.5f} BL  {N_FR} frames x{SUB}')
+_prog(78)
+
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import io as _io
+x_real = x_sh_s+cx_s[:,None]; y_real = y_sh_s+cy_s[:,None]
+x_sim  = x_sc_c+cx_s[:,None]; y_sim  = y_sc_c+cy_s[:,None]
+BCOLS=[i/(n_pts-1) for i in range(n_pts)]
+DARK="#0b0f16"; C_REAL="#3ef07e"; C_SIM="#ff9f1c"
+def _head_spd(xh,yh,tf):
+    dt=np.diff(tf); s=np.hypot(np.diff(xh),np.diff(yh))/dt*bl_mm
+    return np.r_[s[0:1],s]
+spd_real=_head_spd(x_real[:,0],y_real[:,0],t_s)
+spd_sim =_head_spd(x_sim[:,0], y_sim[:,0], t_s)
+spd_max =float(max(spd_real.max(),spd_sim.max()))*1.1
+_prog(82)
+fig=make_subplots(rows=2,cols=2,row_heights=[0.65,0.35],column_widths=[0.5,0.5],
+  specs=[[{"type":"scatter"},{"type":"scatter"}],[{"type":"scatter","colspan":2},None]],
+  subplot_titles=[f"{wcon_label}  real WCON","4-mode PCA tuner (wormsim2)","Head speed (mm/s)"],
+  vertical_spacing=0.10,horizontal_spacing=0.06)
+# static: speed curves (traces 0,1) + time cursor (trace 2)
+fig.add_trace(go.Scatter(x=t_s.tolist(),y=spd_real.tolist(),mode="lines",name="real",line=dict(color=C_REAL,width=1.5)),row=2,col=1)
+fig.add_trace(go.Scatter(x=t_s.tolist(),y=spd_sim.tolist(),mode="lines",name="PCA",line=dict(color=C_SIM,width=1.5)),row=2,col=1)
+fig.add_trace(go.Scatter(x=[t_s[0],t_s[0]],y=[0,spd_max],mode="lines",line=dict(color="white",width=1,dash="dash"),showlegend=False),row=2,col=1)
+# animated: real body (3), real head (4), sim body (5), sim head (6)
+fig.add_trace(go.Scatter(x=x_real[0].tolist(),y=y_real[0].tolist(),mode="lines+markers",
+  line=dict(color=C_REAL,width=3),marker=dict(size=4,color=BCOLS,colorscale="Greens",showscale=False),
+  name="real body",showlegend=False),row=1,col=1)
+fig.add_trace(go.Scatter(x=[float(x_real[0,0])],y=[float(y_real[0,0])],mode="markers",
+  marker=dict(size=9,color="white",symbol="circle"),showlegend=False),row=1,col=1)
+fig.add_trace(go.Scatter(x=x_sim[0].tolist(),y=y_sim[0].tolist(),mode="lines+markers",
+  line=dict(color=C_SIM,width=3),marker=dict(size=4,color=BCOLS,colorscale="Oranges",showscale=False),
+  name="PCA body",showlegend=False),row=1,col=2)
+fig.add_trace(go.Scatter(x=[float(x_sim[0,0])],y=[float(y_sim[0,0])],mode="markers",
+  marker=dict(size=9,color="white",symbol="circle"),showlegend=False),row=1,col=2)
+_prog(86)
+# frames — same pattern as offline tuner: go.Scatter with only updated props
+fig.frames=[go.Frame(
+  data=[
+    go.Scatter(x=x_real[i].tolist(),y=y_real[i].tolist()),
+    go.Scatter(x=[float(x_real[i,0])],y=[float(y_real[i,0])]),
+    go.Scatter(x=x_sim[i].tolist(),y=y_sim[i].tolist()),
+    go.Scatter(x=[float(x_sim[i,0])],y=[float(y_sim[i,0])]),
+    go.Scatter(x=[t_s[i],t_s[i]],y=[0,spd_max]),
+  ],
+  traces=[3,4,5,6,2],
+  name=str(i),
+  layout=go.Layout(title_text=(
+    f"t={t_s[i]:.1f} s  |  bl={bl_mm:.3f} mm  |  "
+    f"var_exp={var_exp:.4f}  |  err={tuner_err:.5f} BL  |  flips={n_flips}"
+  )),
+) for i in range(N_FR)]
+body_ax=dict(showgrid=True,gridcolor="#1e2d3f",gridwidth=1,zeroline=True,zerolinecolor="#2e4a60",tickformat=".2f")
+fig.update_xaxes(body_ax,row=1,col=1); fig.update_xaxes(body_ax,row=1,col=2)
+fig.update_yaxes(dict(**body_ax,title_text="y (BL)"),row=1,col=1)
+fig.update_yaxes(dict(**body_ax,title_text="y (BL)"),row=1,col=2)
+fig.update_xaxes(dict(title_text="x (BL)"),row=1,col=1)
+fig.update_xaxes(dict(title_text="x (BL)"),row=1,col=2)
+fig.update_xaxes(dict(title_text="time (s)"),row=2,col=1)
+fig.update_yaxes(dict(title_text="speed (mm/s)",showgrid=True,gridcolor="#1e2d3f"),row=2,col=1)
+fig.update_layout(
+  paper_bgcolor=DARK,plot_bgcolor="#141a26",
+  font=dict(color="#b0c0d0",size=11),
+  title=dict(text=f"wormsim2 — {wcon_label}  |  4-mode PCA  var_exp={var_exp:.4f}  err={tuner_err:.5f} BL  {N_FR}fr×{SUB}",font=dict(size=13)),
+  legend=dict(bgcolor="rgba(0,0,0,0)",x=0.01,y=0.38),
+  updatemenus=[dict(type="buttons",showactive=False,
+    y=0.30,x=1.02,xanchor="left",
+    buttons=[
+      dict(label="▶ Play",method="animate",args=[None,{"frame":{"duration":71,"redraw":True},"fromcurrent":True}]),
+      dict(label="⏸ Pause",method="animate",args=[[None],{"frame":{"duration":0},"mode":"immediate"}]),
+    ])],
+  sliders=[dict(
+    currentvalue=dict(prefix="t = ",suffix=" s",font=dict(size=11)),
+    pad=dict(t=10),
+    steps=[dict(method="animate",args=[[str(i)],{"frame":{"duration":0,"redraw":True},"mode":"immediate"}],
+                label=f"{t_s[i]:.0f}s") for i in range(N_FR)],
+  )],
+  height=750,
+)
+_prog(92)
+wcon_out=J.dumps({"@WCON-schema":"https://github.com/openworm/tracker-commons",
+  "units":{"t":"s","x":"µm","y":"µm"},
+  "metadata":{"strain":wcon_label,"note":"wormsim2 Pyodide 4-mode PCA tuner reconstruction"},
+  "data":[{"id":"0","head":"L",
+    "t":[round(float(v),3) for v in t_s],
+    "x":[[round(float(v)*bl_mm*1000,2) for v in row] for row in x_sim.tolist()],
+    "y":[[round(float(v)*bl_mm*1000,2) for v in row] for row in y_sim.tolist()]}]
+},separators=(',',':'))
+buf=_io.StringIO()
+fig.write_html(buf,include_plotlyjs='cdn',full_html=True)
+html_out=buf.getvalue()
+_prog(96)
+J.dumps({"html":html_out,"wcon":wcon_out,"metrics":{
+  "bl_mm":round(float(bl_mm),4),"path_bl":round(path_bl,1),
+  "var_exp":round(var_exp,4),"tuner_err_bl":round(float(tuner_err),5),
+  "n_frames_raw":len(valid),"n_frames_anim":N_FR,
+  "duration_s":round(float(t_f[-1]-t_f[0]),1),"n_flips":n_flips}})
+`;
+
+  let result;
+  try {
+    const json = await pyodide.runPythonAsync(pyCode);
+    result = JSON.parse(json);
+  } catch(e) {
+    // Extract the last meaningful line from a Pyodide traceback
+    const lines = (e.message ?? String(e)).split('\n').map(l => l.trim()).filter(Boolean);
+    const summary = lines.at(-1) ?? e.message;
+    la.innerHTML = `
+      <div style="color:var(--red);padding:20px 24px">
+        <strong>Tuner error</strong><br>
+        <code style="font-size:.8rem;word-break:break-all">${summary}</code>
+        <p style="margin-top:12px;color:var(--muted);font-size:.82rem">
+          The WCON file could not be parsed or is in an unsupported format.
+        </p>
+      </div>`;
+    return;
+  }
+  setProgress(96); setLabel('Building animation…');
+  la.style.display = 'none';
+
+  if (window._tunerBlobUrl) URL.revokeObjectURL(window._tunerBlobUrl);
+  window._tunerBlobUrl = URL.createObjectURL(new Blob([result.html], { type: 'text/html' }));
+  showFrame(window._tunerBlobUrl);
+
+  // Downloads + metrics
+  const m = result.metrics;
+  if (s) {
+    s.metrics = m;
+    const slug = (s.strain ?? s.name ?? 'strain').replace(/[^a-z0-9]+/gi, '_');
+    const wconUrl = URL.createObjectURL(new Blob([result.wcon], { type: 'application/json' }));
+    const logUrl  = URL.createObjectURL(new Blob([JSON.stringify({
+      wormsim2: 'pyodide-tuner', strain: s.strain, zenodo: s.zenodo_id,
+      ...m, generated: new Date().toISOString() }, null, 2)], { type: 'application/json' }));
+    s.downloads = [
+      ...(s.downloads ?? []).filter(d => d.ext),
+      { label: '💾 Sim WCON',    url: wconUrl, download: `${slug}_tuner.wcon`   },
+      { label: '📄 Metrics JSON', url: logUrl,  download: `${slug}_metrics.json` },
+    ];
+    renderInfoBar(s);
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────
+// 10. Tab switcher + Pre-tuned grid
+// ────────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.getElementById('tab-search').classList.toggle('active',   name === 'search');
+  document.getElementById('tab-pretuned').classList.toggle('active', name === 'pretuned');
+  document.getElementById('search-container').style.display = name === 'search'   ? 'block' : 'none';
+  document.getElementById('panel-pretuned').style.display   = name === 'pretuned' ? 'block' : 'none';
+}
+
+function renderPretuned() {
+  const grid = document.getElementById('pretuned-grid');
+  const count = document.getElementById('pretuned-count');
+  count.textContent = tunedStrains.length;
+  if (!tunedStrains.length) {
+    grid.innerHTML = '<p style="color:var(--muted);font-size:.85rem">No pre-tuned strains found.</p>';
+    return;
+  }
+  grid.innerHTML = tunedStrains.map(s => {
+    const typeLabel = s.type === 'wild_type' ? 'WT' : s.type === 'mutant' ? 'KO/LOF' : (s.type ?? '');
+    const ver = s._version ? `<span class="chip" style="background:var(--green,#2d6a4f);color:#fff;font-size:.72rem">✓ ${s._version}</span>` : '';
+    const typeChip = typeLabel ? `<span class="chip" style="font-size:.72rem">${typeLabel}</span>` : '';
+    const m = s.metrics ?? {};
+    const mStr = m.bl_mm != null
+      ? `bl=${m.bl_mm} mm  err=${m.tuner_shape_error_bl ?? m.tuner_err_bl ?? '—'} BL`
+      : '';
+    return `<div class="pt-card" onclick="selectStrain('${s.id}');switchTab('search')">
+      <div class="pt-name">${s.strain ?? s.name}</div>
+      <div class="pt-chips">${ver}${typeChip}</div>
+      ${mStr ? `<div class="pt-metrics">${mStr}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ────────────────────────────────────────────────────────────────────
+// 11. Helpers
+// ────────────────────────────────────────────────────────────────────
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────
+// 11. Boot
+// ────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  // Show N2 info bar immediately with a stub (replaced when catalog loads)
+  const n2stub = {
+    id: 'n2_wt', name: 'N2 Wild Type', strain: 'N2',
+    zenodo_id: '1031837', zenodo_url: 'https://zenodo.org/records/1031837',
+    html: 'images/v1200_n2_tuner_600s.html',
+    type: 'wild_type',
+    description: 'C. elegans N2 WT crawling on agar, 600 s. 4-mode PCA NeuromuscularTuner reconstruction.',
+    metrics: { bl_mm: 0.664, tuner_var_explained: 0.7821, tuner_shape_error_bl: 0.022, n_flip_corrections: 1 },
+    downloads: [
+      { label: '🔬 WCON (Zenodo)', url: 'https://zenodo.org/records/1031837', ext: true },
+      { label: '💾 Sim WCON', url: 'strains/n2_wt/tuner.wcon' },
+    ],
+    _tuned: true, _version: 'v0.12.1',
+  };
+  currentStrain = n2stub;
+  document.getElementById('sib-title').textContent  = n2stub.name;
+  document.getElementById('sib-desc').innerHTML = linkifyText(n2stub.description);
+  document.getElementById('sib-chips').innerHTML    =
+    `<span class="chip"><strong>Wild type</strong></span>` +
+    `<span class="chip">Zenodo <strong>${n2stub.zenodo_id}</strong></span>` +
+    `<span class="chip" style="background:var(--green,#2d6a4f);color:#fff">✓ tuned v0.12.1</span>`;
+  document.getElementById('sib-right').innerHTML    =
+    `<a class="btn-sm btn-zenodo" href="${n2stub.zenodo_url}" target="_blank">↗ Zenodo ${n2stub.zenodo_id}</a>`;
+  document.getElementById('strain-info-bar').style.display = 'flex';
+  renderInfoBar(n2stub);
+
+  // Load catalog + discover tuned strains + start live OWMD fetch
+  loadCatalog();
+});
+</script>
+</body>
+</html>
